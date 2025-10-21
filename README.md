@@ -27,38 +27,93 @@ bun add zlient zod
 ## Quick Start
 
 ```typescript
-import { HttpClient, BaseEndpoint, BearerTokenAuth } from 'zlient';
-import { z } from 'zod';
+import { AuthProvider, BaseEndpoint, ClientOptions, HttpClient, HTTPMethod, RequestOptions } from "zlient";
+import z from "zod";
 
-// Define your schemas
-const UserSchema = z.object({
-  id: z.number(),
-  name: z.string(),
-  email: z.string().email(),
+/**
+ * Schemas
+ */
+const todoItem = z.object({
+    userId: z.number(),
+    id: z.number(),
+    title: z.string(),
+    completed: z.boolean(),
 });
 
-// Create a client
-const client = new HttpClient({
-  baseUrls: {
-    default: 'https://api.example.com',
-  },
-  auth: new BearerTokenAuth(() => 'your-token'),
-});
+const ListTodosRequest = z.object({});
+const ListTodosResponse = z.array(todoItem);
 
-// Define an endpoint
-class GetUserEndpoint extends BaseEndpoint<typeof z.undefined, typeof UserSchema> {
-  protected method = 'GET' as const;
-  protected path = (params: { id: number }) => `/users/${params.id}`;
-  
-  constructor(client: HttpClient) {
-    super(client, { responseSchema: UserSchema });
-  }
+const GetTodoRequest = z.object({
+    id: z.number(),
+});
+const GetTodoResponse = todoItem;
+
+
+/**
+ * Endpoints
+ */
+class ListTodos extends BaseEndpoint<typeof ListTodosRequest, typeof ListTodosResponse> {
+    protected readonly method = HTTPMethod.GET;
+    protected readonly path = "/todos";
+    constructor(client: HttpClient) { super(client, { requestSchema: ListTodosRequest, responseSchema: ListTodosResponse }); }
 }
 
-// Use the endpoint
-const getUserEndpoint = new GetUserEndpoint(client);
-const user = await getUserEndpoint.call({ id: 1 });
-console.log(user); // Fully typed!
+class GetTodo extends BaseEndpoint<typeof GetTodoRequest, typeof GetTodoResponse> {
+    protected readonly method = HTTPMethod.GET;
+    protected readonly path = (args: z.infer<typeof GetTodoRequest>) => `/todos/${args.id}`;
+    constructor(client: HttpClient) { super(client, { requestSchema: GetTodoRequest, responseSchema: GetTodoResponse }); }
+}
+
+/**
+ * Service
+ */
+class TodosService {
+    constructor(private client: HttpClient) { }
+    list(args: z.infer<typeof ListTodosRequest>, options?: RequestOptions) { return new ListTodos(this.client).call(args, options); }
+    get(args: z.infer<typeof GetTodoRequest>, options?: RequestOptions) { return new GetTodo(this.client).call(args, options); }
+}
+
+/**
+ * SDK class for initialization
+ */
+export class SDK {
+    readonly http: HttpClient;
+    readonly todos: TodosService;
+
+    constructor(opts: ClientOptions & { auth?: AuthProvider }) {
+        this.http = new HttpClient(opts);
+        if (opts.auth) this.http.setAuth(opts.auth);
+
+        // Services can map to distinct base URL keys via per-call options
+        this.todos = new TodosService(this.http);
+    }
+}
+
+
+/**
+ * Usage example
+ */
+const sdk = new SDK({
+    baseUrls: {
+        default: "https://jsonplaceholder.typicode.com",
+    },
+    headers: {
+        "X-SDK-Name": "example-sdk",
+        "X-SDK-Version": "1.0.0",
+    },
+    retry: { maxRetries: 2, baseDelayMs: 100, jitter: 0.2, retryMethods: ["GET"] },
+    timeout: { requestTimeoutMs: 5000 },
+});
+
+async function demo() {
+    const todos = await sdk.todos.list({});
+    console.log(todos);
+
+    const todo = await sdk.todos.get({ id: 1 });
+    console.log(todo);
+}
+
+demo().catch(console.error);
 ```
 
 ## Core Concepts
