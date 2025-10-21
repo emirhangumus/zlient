@@ -1,0 +1,24 @@
+# Source files
+src/
+index.ts
+*.ts
+
+# Test files
+*.test.ts
+*.spec.ts
+test.ts
+
+# Config files
+tsconfig.json
+rolldown.config.ts
+bun.lock
+
+# Development files
+.vscode/
+.git/
+node_modules/
+
+# Documentation (keep README)
+# README.md is included by default
+
+# Only publish the dist folder

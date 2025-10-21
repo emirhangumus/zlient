@@ -1,0 +1,79 @@
+{
+  "name": "zlient",
+  "version": "1.0.1",
+  "description": "A type-safe HTTP client framework with Zod validation for building robust API clients",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rolldown -c && tsc",
+    "dev": "rolldown -c -w",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "prepublishOnly": "npm run build",
+    "lint": "eslint lib/**/*.ts",
+    "lint:fix": "eslint lib/**/*.ts --fix",
+    "format": "prettier --write \"lib/**/*.ts\"",
+    "format:check": "prettier --check \"lib/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "http-client",
+    "api-client",
+    "zod",
+    "validation",
+    "typescript",
+    "fetch",
+    "rest-api",
+    "type-safe",
+    "schema-validation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/zlient.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/zlient/issues"
+  },
+  "homepage": "https://github.com/yourusername/zlient#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "@typescript-eslint/parser": "^8.46.2",
+    "eslint": "^9.38.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.6.2",
+    "rolldown": "^1.0.0-beta.44",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "zod": "^3.0.0 || ^4.0.0"
+  },
+  "dependencies": {
+    "zod": "^4.1.12"
+  }
+}
