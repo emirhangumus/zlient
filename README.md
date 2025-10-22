@@ -87,7 +87,7 @@ export class SDK {
         this.http = new HttpClient(opts);
         if (opts.auth) this.http.setAuth(opts.auth);
 
-        // Services can map to distinct base URL keys via per-call options
+        // Initialize services
         this.todos = new TodosService(this.http);
     }
 }
