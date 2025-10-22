@@ -51,12 +51,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/zlient.git"
+    "url": "https://github.com/emirhangumus/zlient.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/zlient/issues"
+    "url": "https://github.com/emirhangumus/zlient/issues"
   },
-  "homepage": "https://github.com/yourusername/zlient#readme",
+  "homepage": "https://github.com/emirhangumus/zlient#readme",
   "engines": {
     "node": ">=16.0.0"
   },

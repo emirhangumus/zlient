@@ -48,5 +48,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 📦 Multiple base URL support
 - 🌳 Tree-shakeable exports
 
-[unreleased]: https://github.com/yourusername/zlient/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/yourusername/zlient/releases/tag/v1.0.0
+[unreleased]: https://github.com/emirhangumus/zlient/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/emirhangumus/zlient/releases/tag/v1.0.0
