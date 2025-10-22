@@ -6,11 +6,14 @@ A type-safe HTTP client framework with Zod validation for building robust API cl
 
 - 🔒 **Type-safe**: Full TypeScript support with automatic type inference
 - ✅ **Runtime validation**: Zod schemas for request/response validation
-- 🔄 **Retry logic**: Built-in configurable retry strategies
+- 🔄 **Retry logic**: Built-in configurable retry strategies with exponential backoff
 - 🎯 **Authentication**: Multiple auth providers (API Key, Bearer Token, Custom)
 - 🪝 **Interceptors**: Before request and after response hooks
 - ⏱️ **Timeouts**: Configurable request timeouts
 - 📦 **Multiple endpoints**: Easy service separation with base URL mapping
+- 📊 **Observability**: Built-in logging and metrics collection
+- 🎨 **Developer Experience**: Comprehensive JSDoc, helper methods, great error messages
+- 🏢 **Enterprise-ready**: Production-grade logging, metrics, and monitoring support
 
 ## Installation
 
@@ -304,6 +307,76 @@ await endpoint.call(data, {
 });
 ```
 
+### Logging and Metrics
+
+#### Structured Logging
+
+```typescript
+import { HttpClient, ConsoleLogger, LogLevel } from 'zlient';
+
+const client = new HttpClient({
+  baseUrls: { default: 'https://api.example.com' },
+  logger: new ConsoleLogger(LogLevel.INFO),
+});
+
+// All requests are automatically logged with duration, status, etc.
+```
+
+#### Metrics Collection
+
+```typescript
+import { HttpClient, InMemoryMetricsCollector } from 'zlient';
+
+const metrics = new InMemoryMetricsCollector();
+const client = new HttpClient({
+  baseUrls: { default: 'https://api.example.com' },
+  metrics,
+});
+
+// View metrics summary
+const summary = metrics.getSummary();
+console.log(`Success rate: ${(summary.successful / summary.total * 100).toFixed(2)}%`);
+console.log(`Avg duration: ${summary.avgDurationMs}ms`);
+```
+
+#### Custom Logger/Metrics Integration
+
+```typescript
+import { Logger, LogEntry, MetricsCollector, RequestMetrics } from 'zlient';
+
+// Integrate with your logging service (e.g., DataDog, CloudWatch)
+class CustomLogger implements Logger {
+  log(entry: LogEntry) {
+    // Send to your logging service
+    myLoggingService.log(entry);
+  }
+}
+
+class CustomMetrics implements MetricsCollector {
+  collect(metrics: RequestMetrics) {
+    // Send to your metrics service (e.g., Prometheus, DataDog)
+    dogstatsd.histogram('http.request.duration', metrics.durationMs);
+  }
+}
+
+const client = new HttpClient({
+  baseUrls: { default: 'https://api.example.com' },
+  logger: new CustomLogger(),
+  metrics: new CustomMetrics(),
+});
+```
+
+### Convenience Methods
+
+```typescript
+// Use shortcuts instead of full request() method
+const { data: users } = await client.get('/users', { query: { page: 1 } });
+const { data: user } = await client.post('/users', { name: 'John' });
+const { data: updated } = await client.put('/users/1', { name: 'Jane' });
+const { data: patched } = await client.patch('/users/1', { email: 'new@email.com' });
+await client.delete('/users/1');
+```
+
 ### Error Handling
 
 ```typescript
@@ -317,9 +390,19 @@ try {
     console.error('Status:', error.status);
     console.error('Details:', error.details);
     
-    if (error.zodError) {
-      console.error('Validation errors:', error.zodError.errors);
+    // Check error type
+    if (error.isValidationError()) {
+      console.error('Validation errors:', error.zodError?.issues);
     }
+    if (error.isClientError()) {
+      console.error('Client error (4xx)');
+    }
+    if (error.isServerError()) {
+      console.error('Server error (5xx)');
+    }
+    
+    // Get full error details
+    console.error(JSON.stringify(error.toJSON(), null, 2));
   }
 }
 ```

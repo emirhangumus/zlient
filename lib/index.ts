@@ -2,6 +2,8 @@
 export * from './types';
 export * from './auth';
 export * from './validation';
+export * from './logger';
+export * from './metrics';
 
 // HTTP client and endpoint base class
 export { HttpClient } from './http/HttpClient';
