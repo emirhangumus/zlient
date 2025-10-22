@@ -1,3 +1,7 @@
+import type { AuthProvider } from '../auth';
+import { NoAuth } from '../auth';
+import { LoggerUtil, NoOpLogger } from '../logger';
+import { MetricsCollector, NoOpMetricsCollector } from '../metrics';
 import {
   ApiError,
   ClientOptions,
@@ -8,10 +12,6 @@ import {
   RetryStrategy,
   toQueryString,
 } from '../types';
-import type { AuthProvider } from '../auth';
-import { NoAuth } from '../auth';
-import { Logger, LoggerUtil, NoOpLogger } from '../logger';
-import { MetricsCollector, NoOpMetricsCollector } from '../metrics';
 
 /**
  * HTTP client with built-in retry logic, authentication, and interceptors.
@@ -46,7 +46,7 @@ export class HttpClient {
    * @param opts - Client configuration options
    * @throws {Error} If no fetch implementation is available
    */
-  constructor(opts: ClientOptions & { auth?: AuthProvider; logger?: Logger; metrics?: MetricsCollector }) {
+  constructor(opts: ClientOptions) {
     this.fetchImpl = opts.fetch ?? (globalThis.fetch?.bind(globalThis) as FetchLike);
     if (!this.fetchImpl)
       throw new Error('No fetch implementation found. Pass one via options.fetch.');

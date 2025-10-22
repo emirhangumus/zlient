@@ -1,3 +1,5 @@
+import { HttpClient } from './http/HttpClient';
+
 // Core types and utilities
 export * from './types';
 export * from './auth';

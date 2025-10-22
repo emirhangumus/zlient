@@ -1,4 +1,7 @@
 import { z, ZodError } from 'zod';
+import { AuthProvider } from './auth';
+import { Logger } from './logger';
+import { MetricsCollector } from './metrics';
 
 export type Dictionary<T = unknown> = Record<string, T>;
 
@@ -115,6 +118,12 @@ export interface ClientOptions {
   interceptors?: Interceptors;
   /** Timeout configuration */
   timeout?: TimeoutOptions;
+  /** Authentication provider */
+  auth?: AuthProvider;
+  /** Logger instance */
+  logger?: Logger;
+  /** Metrics collector */
+  metrics?: MetricsCollector;
 }
 
 export type SafeParseResult<T> = { success: true; data: T } | { success: false; error: ZodError };
