@@ -1,6 +1,6 @@
 {
   "name": "zlient",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "A type-safe HTTP client framework with Zod validation for building robust API clients",
   "type": "module",
   "main": "./dist/index.cjs",
