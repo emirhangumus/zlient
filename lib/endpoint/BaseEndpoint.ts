@@ -28,7 +28,7 @@ import { parseOrThrow } from '../validation';
  * }
  * ```
  */
-export abstract class BaseEndpoint<ReqSchema extends z.ZodTypeAny, ResSchema extends z.ZodTypeAny> {
+export abstract class BaseEndpoint<ReqSchema extends z.ZodType, ResSchema extends z.ZodType> {
   /** HTTP method for this endpoint */
   protected abstract readonly method: keyof typeof HTTPMethod;
   /** URL path (can be a function for dynamic paths) */

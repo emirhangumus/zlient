@@ -32,8 +32,8 @@ export type IdType = z.infer<typeof Id>;
  * ```
  */
 export const Timestamps = z.object({
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 });
 
 /**
@@ -42,7 +42,7 @@ export const Timestamps = z.object({
  */
 export const Meta = z.object({
   requestId: z.string().optional(),
-  timestamp: z.string().datetime().optional(),
+  timestamp: z.iso.datetime().optional(),
   traceId: z.string().optional(),
 });
 
@@ -83,10 +83,10 @@ export const ApiErrorSchema = z.object({
  * // }
  * ```
  */
-export const Envelope = <T extends z.ZodTypeAny>(inner: T) =>
+export const Envelope = <T extends z.ZodType>(inner: T) =>
   z.object({
     success: z.boolean(),
-    data: inner.optional(),
+    data: inner.optional().nullable(),
     error: ApiErrorSchema.optional(),
     meta: Meta.optional(),
   });

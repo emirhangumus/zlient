@@ -19,7 +19,7 @@ import { ApiError, SafeParseResult } from './types';
  * }
  * ```
  */
-export function safeParse<T>(schema: z.ZodTypeAny, data: unknown): SafeParseResult<T> {
+export function safeParse<T>(schema: z.ZodType, data: unknown): SafeParseResult<T> {
   const res = schema.safeParse(data);
   if (res.success) return { success: true, data: res.data as T };
   return { success: false, error: res.error };
@@ -46,7 +46,7 @@ export function safeParse<T>(schema: z.ZodTypeAny, data: unknown): SafeParseResu
  * }
  * ```
  */
-export function parseOrThrow<T>(schema: z.ZodTypeAny, data: unknown): T {
+export function parseOrThrow<T>(schema: z.ZodType, data: unknown): T {
   const res = schema.safeParse(data);
   if (!res.success) {
     throw new ApiError('Response validation failed', { zodError: res.error });

@@ -179,7 +179,7 @@ Add JSDoc comments for public APIs:
  * }
  * ```
  */
-export function safeParse<T>(schema: z.ZodTypeAny, data: unknown): SafeParseResult<T> {
+export function safeParse<T>(schema: z.ZodType, data: unknown): SafeParseResult<T> {
   // ...
 }
 ```
