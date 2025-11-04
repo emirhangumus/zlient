@@ -6,8 +6,8 @@ export * from './logger';
 export * from './metrics';
 
 // HTTP client and endpoint base class
-export { HttpClient } from './http/HttpClient';
-export { BaseEndpoint } from './endpoint/BaseEndpoint';
+export { HttpClient } from './http/http-client';
+export { BaseEndpoint, type EndpointCallConfig } from './endpoint/base-endpoint';
 
 // Common schemas
 export * from './schemas/common';

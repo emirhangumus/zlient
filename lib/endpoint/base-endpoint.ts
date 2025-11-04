@@ -1,7 +1,28 @@
 import { z } from 'zod';
-import { HttpClient } from '../http/HttpClient';
-import { HTTPMethod, RequestOptions } from '../types';
+import { HttpClient } from '../http/http-client';
+import { HTTPMethod } from '../types';
 import { parseOrThrow } from '../validation';
+
+/**
+ * Request configuration for endpoint calls.
+ * Wrapper object containing all request parameters.
+ *
+ * @template ReqSchema - Zod schema for request validation
+ */
+export type EndpointCallConfig<ReqSchema extends z.ZodType> = {
+  /** Request body data (for POST, PUT, PATCH, etc.) or request args */
+  data?: z.infer<ReqSchema>;
+  /** Path parameters for dynamic path construction */
+  pathParams?: Record<string, string | number>;
+  /** Query string parameters */
+  query?: Record<string, string | number | boolean | undefined> | URLSearchParams;
+  /** Request headers */
+  headers?: Record<string, string>;
+  /** Override base URL for this call */
+  baseUrlKey?: string;
+  /** Abort controller signal for cancellation */
+  signal?: AbortSignal;
+};
 
 /**
  * Generic, strongly-typed endpoint with Zod schemas for request and response validation.
@@ -33,6 +54,11 @@ export abstract class BaseEndpoint<ReqSchema extends z.ZodType, ResSchema extend
   protected abstract readonly method: keyof typeof HTTPMethod;
   /** URL path (can be a function for dynamic paths) */
   protected abstract readonly path: string | ((params: z.infer<ReqSchema>) => string);
+  /** Additional options for the request */
+  protected readonly options?: {
+    /** Override base URL for this call */
+    baseUrlKey?: string;
+  };
   /** Optional request schema for validation */
   protected readonly requestSchema?: ReqSchema;
   /** Response schema for validation */
@@ -54,8 +80,7 @@ export abstract class BaseEndpoint<ReqSchema extends z.ZodType, ResSchema extend
    * Call the endpoint with strong typing derived from schemas.
    * Validates request data before sending and response data after receiving.
    * 
-   * @param args - Request arguments (typed by ReqSchema)
-   * @param options - Additional request options
+   * @param config - Request configuration object containing all parameters
    * @returns Promise resolving to validated response data (typed by ResSchema)
    * @throws {ZodError} If request validation fails
    * @throws {ApiError} If response validation fails or request fails
@@ -63,39 +88,39 @@ export abstract class BaseEndpoint<ReqSchema extends z.ZodType, ResSchema extend
    * @example
    * ```ts
    * const endpoint = new GetUser(client);
-   * const user = await endpoint.call({ id: 1 });
+   * const user = await endpoint.call({ data: { id: 1 } });
+   * // With additional options:
+   * const user = await endpoint.call({ 
+   *   data: { id: 1 },
+   *   headers: { 'X-Custom': 'value' },
+   *   query: { include: 'posts' }
+   * });
    * ```
    */
-  async call(args: z.infer<ReqSchema>, options?: RequestOptions): Promise<z.infer<ResSchema>> {
+  async call(config: EndpointCallConfig<ReqSchema> = {}): Promise<z.infer<ResSchema>> {
+    const { data, query, headers, baseUrlKey, signal, pathParams } = config;
+
     // Validate request body/params before sending (when schema provided)
-    if (this.requestSchema) {
-      const parsed = this.requestSchema.safeParse(args);
+    if (this.requestSchema && data !== undefined) {
+      const parsed = this.requestSchema.safeParse(data);
       if (!parsed.success) throw parsed.error;
     }
 
-    const path = typeof this.path === 'function' ? this.path(args) : this.path;
+    // Build path - use pathParams if provided, otherwise use data
+    const pathArgs = pathParams ?? data;
+    const path = typeof this.path === 'function' ? this.path(pathArgs as z.infer<ReqSchema>) : this.path;
 
-    // For GET/HEAD methods, don't send body. Allow query params from args.query or options.query
+    // For GET/HEAD methods, don't send body
     const shouldHaveBody = this.method !== 'GET' && this.method !== 'HEAD';
-    const body = shouldHaveBody ? args : undefined;
+    const body = shouldHaveBody ? data : undefined;
 
-    // Merge query params: args.query takes precedence over options.query
-    const argsAsRecord = args as Record<string, unknown>;
-    const queryFromArgs = argsAsRecord?.query;
-
-    let mergedQuery: Record<string, string | number | boolean | undefined> | undefined;
-    if (options?.query || queryFromArgs) {
-      mergedQuery = {
-        ...(typeof options?.query === 'object' && !(options?.query instanceof URLSearchParams) ? options.query : {}),
-        ...(typeof queryFromArgs === 'object' && queryFromArgs !== null ? queryFromArgs as Record<string, string | number | boolean | undefined> : {}),
-      };
-    }
-
-    const { data } = await this.client.request(this.method, path, body, {
-      ...options,
-      query: mergedQuery && Object.keys(mergedQuery).length > 0 ? mergedQuery : options?.query,
+    const { data: responseData } = await this.client.request(this.method, path, body, {
+      query,
+      headers,
+      baseUrlKey: baseUrlKey ?? this.options?.baseUrlKey,
+      signal,
     });
 
-    return parseOrThrow<z.infer<ResSchema>>(this.responseSchema, data);
+    return parseOrThrow<z.infer<ResSchema>>(this.responseSchema, responseData);
   }
 }
