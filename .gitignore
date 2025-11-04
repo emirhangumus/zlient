@@ -53,3 +53,5 @@ Thumbs.db
 
 # Bun
 bun.lock
+
+index.ts

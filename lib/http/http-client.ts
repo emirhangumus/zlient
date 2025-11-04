@@ -16,7 +16,7 @@ import {
 /**
  * HTTP client with built-in retry logic, authentication, and interceptors.
  * Supports multiple base URLs, type-safe requests, and comprehensive error handling.
- * 
+ *
  * @example
  * ```ts
  * const client = new HttpClient({
@@ -25,7 +25,7 @@ import {
  *   retry: { maxRetries: 3, baseDelayMs: 1000 },
  *   timeout: { requestTimeoutMs: 30000 }
  * });
- * 
+ *
  * const { data } = await client.request('GET', '/users', undefined, { query: { page: 1 } });
  * ```
  */
@@ -42,7 +42,7 @@ export class HttpClient {
 
   /**
    * Creates a new HTTP client instance.
-   * 
+   *
    * @param opts - Client configuration options
    * @throws {Error} If no fetch implementation is available
    */
@@ -92,7 +92,7 @@ export class HttpClient {
 
   /**
    * Set or update the authentication provider.
-   * 
+   *
    * @param auth - Authentication provider instance
    * @example
    * ```ts
@@ -166,14 +166,14 @@ export class HttpClient {
 
   /**
    * Make an HTTP request with automatic retry, authentication, and validation.
-   * 
+   *
    * @param method - HTTP method (GET, POST, PUT, etc.)
    * @param path - Request path (will be appended to base URL)
    * @param body - Request body (will be JSON.stringify'd if Content-Type is json)
    * @param options - Additional request options (headers, query params, etc.)
    * @returns Promise resolving to response data and Response object
    * @throws {ApiError} If request fails or response validation fails
-   * 
+   *
    * @example
    * ```ts
    * const { data, response } = await client.request('GET', '/users', undefined, {
@@ -320,61 +320,79 @@ export class HttpClient {
 
   /**
    * Convenience method for GET requests.
-   * 
+   *
    * @example
    * ```ts
    * const { data } = await client.get('/users', { query: { page: 1 } });
    * ```
    */
-  async get<T = unknown>(path: string, options?: RequestOptions): Promise<{ data: T; response: Response }> {
+  async get<T = unknown>(
+    path: string,
+    options?: RequestOptions
+  ): Promise<{ data: T; response: Response }> {
     return this.request<T>('GET', path, undefined, options);
   }
 
   /**
    * Convenience method for POST requests.
-   * 
+   *
    * @example
    * ```ts
    * const { data } = await client.post('/users', { name: 'John' });
    * ```
    */
-  async post<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<{ data: T; response: Response }> {
+  async post<T = unknown>(
+    path: string,
+    body?: unknown,
+    options?: RequestOptions
+  ): Promise<{ data: T; response: Response }> {
     return this.request<T>('POST', path, body, options);
   }
 
   /**
    * Convenience method for PUT requests.
-   * 
+   *
    * @example
    * ```ts
    * const { data } = await client.put('/users/1', { name: 'John Updated' });
    * ```
    */
-  async put<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<{ data: T; response: Response }> {
+  async put<T = unknown>(
+    path: string,
+    body?: unknown,
+    options?: RequestOptions
+  ): Promise<{ data: T; response: Response }> {
     return this.request<T>('PUT', path, body, options);
   }
 
   /**
    * Convenience method for PATCH requests.
-   * 
+   *
    * @example
    * ```ts
    * const { data } = await client.patch('/users/1', { name: 'John' });
    * ```
    */
-  async patch<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<{ data: T; response: Response }> {
+  async patch<T = unknown>(
+    path: string,
+    body?: unknown,
+    options?: RequestOptions
+  ): Promise<{ data: T; response: Response }> {
     return this.request<T>('PATCH', path, body, options);
   }
 
   /**
    * Convenience method for DELETE requests.
-   * 
+   *
    * @example
    * ```ts
    * const { data } = await client.delete('/users/1');
    * ```
    */
-  async delete<T = unknown>(path: string, options?: RequestOptions): Promise<{ data: T; response: Response }> {
+  async delete<T = unknown>(
+    path: string,
+    options?: RequestOptions
+  ): Promise<{ data: T; response: Response }> {
     return this.request<T>('DELETE', path, undefined, options);
   }
 }

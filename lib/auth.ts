@@ -12,7 +12,7 @@ export interface AuthContext {
 /**
  * Interface for authentication providers.
  * Implement this to create custom authentication strategies.
- * 
+ *
  * @example
  * ```ts
  * class CustomAuth implements AuthProvider {
@@ -26,7 +26,7 @@ export interface AuthProvider {
   /**
    * Apply authentication to the outgoing request.
    * Called after SDK headers are assembled, but before request is sent.
-   * 
+   *
    * @param req - Request context including URL, init, and options
    */
   apply(req: AuthContext): Promise<void> | void;
@@ -45,12 +45,12 @@ export class NoAuth implements AuthProvider {
 /**
  * API Key authentication provider.
  * Supports both header-based and query parameter-based authentication.
- * 
+ *
  * @example
  * ```ts
  * // Header-based
  * const auth = new ApiKeyAuth({ header: 'X-API-Key', value: 'secret' });
- * 
+ *
  * // Query parameter-based
  * const auth = new ApiKeyAuth({ query: 'apiKey', value: 'secret' });
  * ```
@@ -78,12 +78,12 @@ export class ApiKeyAuth implements AuthProvider {
 /**
  * Bearer token authentication provider.
  * Supports both static tokens and dynamic token fetching (e.g., for OAuth2 refresh).
- * 
+ *
  * @example
  * ```ts
  * // Static token
  * const auth = new BearerTokenAuth(() => 'my-token');
- * 
+ *
  * // Dynamic token with refresh
  * const auth = new BearerTokenAuth(async () => {
  *   return await refreshAccessToken();
@@ -91,7 +91,7 @@ export class ApiKeyAuth implements AuthProvider {
  * ```
  */
 export class BearerTokenAuth implements AuthProvider {
-  constructor(private getToken: () => Promise<string> | string) { }
+  constructor(private getToken: () => Promise<string> | string) {}
   async apply({ init }: AuthContext) {
     const token = await this.getToken();
     if (!token) {

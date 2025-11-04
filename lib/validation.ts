@@ -4,11 +4,11 @@ import { ApiError, SafeParseResult } from './types';
 /**
  * Safely parse data with a Zod schema without throwing.
  * Returns a result object with success status and data or error.
- * 
+ *
  * @param schema - Zod schema to validate against
  * @param data - Data to validate
  * @returns Result object with success flag and data/error
- * 
+ *
  * @example
  * ```ts
  * const result = safeParse(UserSchema, userData);
@@ -28,12 +28,12 @@ export function safeParse<T>(schema: z.ZodType, data: unknown): SafeParseResult<
 /**
  * Parse data with a Zod schema, throwing an ApiError on validation failure.
  * Use this when you want to fail fast on invalid data.
- * 
+ *
  * @param schema - Zod schema to validate against
  * @param data - Data to validate
  * @returns Validated and typed data
  * @throws {ApiError} If validation fails
- * 
+ *
  * @example
  * ```ts
  * try {

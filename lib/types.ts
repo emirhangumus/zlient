@@ -10,7 +10,7 @@ export type FetchLike = (input: string | Request | URL, init?: RequestInit) => P
 /**
  * Map of base URLs for different services.
  * The 'default' key is required and used when no specific key is provided.
- * 
+ *
  * @example
  * ```ts
  * {
@@ -28,7 +28,7 @@ export type BaseUrlMap = {
 /**
  * Configuration for retry behavior on failed requests.
  * Implements exponential backoff with optional jitter.
- * 
+ *
  * @example
  * ```ts
  * {
@@ -94,7 +94,7 @@ export interface TimeoutOptions {
 
 /**
  * Configuration options for the HTTP client.
- * 
+ *
  * @example
  * ```ts
  * const options: ClientOptions = {
@@ -131,7 +131,7 @@ export type SafeParseResult<T> = { success: true; data: T } | { success: false; 
 /**
  * Custom error class for API-related errors.
  * Includes HTTP status codes, response details, and validation errors.
- * 
+ *
  * @example
  * ```ts
  * throw new ApiError('Invalid request', {
@@ -217,7 +217,7 @@ export const PaginationSchema = z.object({
 
 /**
  * Options that can be passed to individual requests to override defaults.
- * 
+ *
  * @example
  * ```ts
  * await endpoint.call(data, {
@@ -241,10 +241,10 @@ export type RequestOptions = {
 /**
  * Converts query parameters to a URL query string.
  * Filters out undefined values automatically.
- * 
+ *
  * @param q - Query parameters as URLSearchParams or object
  * @returns Query string with leading '?' or empty string
- * 
+ *
  * @example
  * ```ts
  * toQueryString({ page: 1, filter: 'active' }) // "?page=1&filter=active"
