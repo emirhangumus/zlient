@@ -165,6 +165,25 @@ export class HttpClient {
   }
 
   /**
+   * Get all configured base URLs.
+   *
+   * @returns Object mapping base URL keys to their resolved URLs
+   */
+  public getBaseUrls() {
+    return this.baseUrls;
+  }
+
+  /**
+   * Get the resolved base URL for a given key.
+   *
+   * @param key - Base URL key (defaults to 'default' if not provided)
+   * @returns Resolved base URL string
+   */
+  public getBaseUrl(key: string) {
+    return this.resolveBaseUrl(key);
+  }
+
+  /**
    * Make an HTTP request with automatic retry, authentication, and validation.
    *
    * @param method - HTTP method (GET, POST, PUT, etc.)
