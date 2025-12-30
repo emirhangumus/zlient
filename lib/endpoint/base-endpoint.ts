@@ -38,7 +38,16 @@ type InferResponse<S> = S extends z.ZodType
   ? z.infer<S[keyof S]>
   : never;
 
-export class Endpoint<
+export type EndpointCall<
+  ResSchema extends z.ZodType | Record<number, z.ZodType>,
+  ReqSchema extends z.ZodType | undefined,
+  QuerySchema extends z.ZodType | undefined,
+  PathSchema extends z.ZodType | undefined,
+> = (
+  params: EndpointCallParams<ReqSchema, QuerySchema, PathSchema>
+) => Promise<InferResponse<ResSchema>>;
+
+export class EndpointImpl<
   ResSchema extends z.ZodType | Record<number, z.ZodType>,
   ReqSchema extends z.ZodType | undefined,
   QuerySchema extends z.ZodType | undefined,

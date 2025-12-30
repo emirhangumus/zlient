@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AuthProvider } from '../auth';
 import { NoAuth } from '../auth';
-import { Endpoint, EndpointConfig } from '../endpoint/base-endpoint';
+import { EndpointCall, EndpointConfig, EndpointImpl } from '../endpoint/base-endpoint';
 import { LoggerUtil, NoOpLogger } from '../logger';
 import { MetricsCollector, NoOpMetricsCollector } from '../metrics';
 import {
@@ -428,7 +428,8 @@ export class HttpClient {
     PathSchema extends z.ZodType | undefined = undefined,
   >(
     config: EndpointConfig<ResSchema, ReqSchema, QuerySchema, PathSchema>
-  ): Endpoint<ResSchema, ReqSchema, QuerySchema, PathSchema> {
-    return new Endpoint(this, config);
+  ): EndpointCall<ResSchema, ReqSchema, QuerySchema, PathSchema> {
+    const endpoint = new EndpointImpl(this, config);
+    return (params) => endpoint.call(params);
   }
 }

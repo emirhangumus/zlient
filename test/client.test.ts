@@ -32,7 +32,7 @@ describe('Zlient', () => {
                 response: UserSchema,
             });
 
-            const user = await getUser.call({});
+            const user = await getUser({});
 
             expect(user).toEqual({ id: 1, name: 'Test User' });
             expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -51,7 +51,7 @@ describe('Zlient', () => {
                 response: UserSchema,
             });
 
-            const user = await getUser.call({
+            const user = await getUser({
                 pathParams: { id: '123' }
             });
 
@@ -72,12 +72,12 @@ describe('Zlient', () => {
             });
 
             // Valid call
-            await createUser.call({ data: { name: 'New User' } });
+            await createUser({ data: { name: 'New User' } });
 
             // Invalid call (should throw Zod error)
             // We manually check validation logic
             try {
-                await createUser.call({ data: { name: 123 as any } });
+                await createUser({ data: { name: 123 as any } });
                 expect(true).toBe(false); // Should fail if no error thrown
             } catch (e) {
                 expect(e).toBeInstanceOf(z.ZodError);
@@ -102,7 +102,7 @@ describe('Zlient', () => {
                 }
             });
 
-            const result = await createItem.call({});
+            const result = await createItem({});
             expect(result).toEqual({ id: 123 });
         });
     });
@@ -139,7 +139,7 @@ describe('Zlient', () => {
                 response: UserSchema,
             });
 
-            await getUser.call({});
+            await getUser({});
 
             const req = mockFetch.mock.calls[mockFetch.mock.calls.length - 1][0] as Request;
             // The internal implementation converts everything to Request object
