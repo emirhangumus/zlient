@@ -53,3 +53,7 @@ Thumbs.db
 
 # Bun
 bun.lock
+
+# VitePress
+docs/.vitepress/cache
+docs/.vitepress/dist
