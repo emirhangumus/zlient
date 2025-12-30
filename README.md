@@ -71,7 +71,7 @@ const getUser = client.createEndpoint({
 TypeScript will enforce inputs and infer the response type automatically.
 
 ```typescript
-const user = await getUser.call({
+const user = await getUser({
   pathParams: { id: '123' },
 });
 
@@ -114,7 +114,7 @@ const createPost = client.createEndpoint({
   },
 });
 
-const result = await createPost.call({ data: { title: 'Hello' } });
+const result = await createPost({ data: { title: 'Hello' } });
 // `result` type is the union of the 201 and 400 schemas
 ```
 

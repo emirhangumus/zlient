@@ -10,7 +10,7 @@ Any request failure (network, validation, or non-success status code) throws an 
 import { ApiError } from 'zlient';
 
 try {
-  await getUser.call({ ... });
+  await getUser({ ... });
 } catch (err) {
   if (err instanceof ApiError) {
     if (err.isValidationError()) {

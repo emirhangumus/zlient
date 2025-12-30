@@ -33,16 +33,17 @@ const client = new HttpClient({
 
 Using a specific service:
 ```typescript
-await getProfile.call({}, { baseUrlKey: 'auth' });
+await getProfile({ baseUrlKey: 'auth' });
 ```
 
 ## Request Options
 
-Pass these as the second argument to `.call()`.
+Pass these as part of the argument object.
 
 ```typescript
-await endpoint.call(params, {
-  // Override base URL
+await endpoint({
+  ...params,
+  // Override base URL (if supported by schema)
   baseUrlKey: 'cdn',
   
   // Merge these headers with default headers

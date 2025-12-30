@@ -50,7 +50,7 @@ const getUser = client.createEndpoint({
 });
 
 // data is strictly typed as { id: string; name: string }
-const data = await getUser.call({});
+const data = await getUser({});
 
 // ✅ Safe: We know id is a string
 console.log(data.id.toLowerCase());

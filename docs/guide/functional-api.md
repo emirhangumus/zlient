@@ -59,10 +59,10 @@ const searchUsers = client.createEndpoint({
 
 ## 4. Execution
 
-To execute an endpoint, call `.call()` on it.
+To execute an endpoint, call it directly as a function.
 
 ```typescript
-const result = await searchUsers.call({
+const result = await searchUsers({
   query: { q: 'alice', page: 2 }
 });
 
@@ -71,16 +71,14 @@ const result = await searchUsers.call({
 
 ## 5. Abort Signals & timeouts
 
-You can pass standard `fetch` options to the `.call()` method as the second argument.
+You can pass standard `fetch` options to the function call by including them in the params object.
 
 ```typescript
 const controller = new AbortController();
 
-await searchUsers.call(
-  { query: { q: 'alice' } },
-  { 
-    signal: controller.signal,
-    headers: { 'X-Custom': '123' } 
-  }
-);
+await searchUsers({
+  query: { q: 'alice' },
+  signal: controller.signal,
+  headers: { 'X-Custom': '123' }
+});
 ```

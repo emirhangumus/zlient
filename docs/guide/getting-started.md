@@ -42,7 +42,7 @@ const getUser = client.createEndpoint({
 
 ### 3. Call it
 ```typescript
-const user = await getUser.call({
+const user = await getUser({
   pathParams: { id: '123' }
 });
 ```

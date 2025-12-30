@@ -37,6 +37,6 @@ Standard schema for `{ items: T[], total, page, pageSize }`.
 ## Helper Types
 
 - `ClientOptions`: Configuration object type.
-- `RequestOptions`: Options passed to `.call()`.
+- `RequestOptions`: Options passed to the endpoint.
 - `HttpError`: The error class thrown by the client.
 - `Paginated<T>`: TypeScript interface matching `PaginationSchema`.
