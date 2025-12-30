@@ -75,11 +75,12 @@ export class HttpClient {
 
     // Default retryStatusCodes if not provided
     if (!this.retry.retryStatusCodes) {
-      this.retry.retryStatusCodes = (Object.keys(HTTPStatusCode) as (keyof typeof HTTPStatusCode)[])
-        .filter(key => {
-          const code = HTTPStatusCode[key];
-          return typeof code === 'number' && code >= 500;
-        });
+      this.retry.retryStatusCodes = (
+        Object.keys(HTTPStatusCode) as (keyof typeof HTTPStatusCode)[]
+      ).filter((key) => {
+        const code = HTTPStatusCode[key];
+        return typeof code === 'number' && code >= 500;
+      });
     }
 
     // Validate retry configuration
@@ -313,11 +314,7 @@ export class HttpClient {
       }
     };
 
-    const canRetry = ({
-      error,
-    }: {
-      error?: unknown;
-    }) => {
+    const canRetry = ({ error }: { error?: unknown }) => {
       // Don't retry timeouts or aborts
       if (error && typeof error === 'object' && 'name' in error) {
         const errorName = (error as { name?: string }).name;
@@ -326,7 +323,7 @@ export class HttpClient {
       // Retry on network errors or configured status codes
       if (error instanceof ApiError && error.status) {
         const retryCodes = this.retry.retryStatusCodes;
-        if (retryCodes?.some(codeKey => HTTPStatusCode[codeKey] === error.status)) {
+        if (retryCodes?.some((codeKey) => HTTPStatusCode[codeKey] === error.status)) {
           return true;
         }
       }

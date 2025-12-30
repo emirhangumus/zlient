@@ -97,7 +97,7 @@ export class ApiKeyAuth implements AuthProvider {
  * ```
  */
 export class BearerTokenAuth implements AuthProvider {
-  constructor(private getToken: () => Promise<string> | string) { }
+  constructor(private getToken: () => Promise<string> | string) {}
   async apply({ init }: AuthContext) {
     const token = await this.getToken();
     if (!token) {

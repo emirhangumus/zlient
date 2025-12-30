@@ -28,7 +28,7 @@ export type EndpointCallParams<
   query?: QuerySchema extends z.ZodType ? z.infer<QuerySchema> : never;
   pathParams?: PathSchema extends z.ZodType ? z.infer<PathSchema> : never;
   headers?: Record<string, string>;
-  signal?: AbortSignal;
+  signal?: globalThis.AbortSignal;
 };
 
 // Helper to extract the response type from a schema which might be a single ZodType or a status map
@@ -84,6 +84,7 @@ export class Endpoint<
     let pathStr: string;
     if (typeof this.config.path === 'function') {
       if (!pathParams) throw new Error('Path function requires pathParams');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       pathStr = this.config.path(pathParams as any);
     } else {
       pathStr = this.config.path;
@@ -94,6 +95,7 @@ export class Endpoint<
       pathStr,
       data,
       {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         query: query as any,
         headers,
         baseUrlKey: this.config.baseUrlKey,

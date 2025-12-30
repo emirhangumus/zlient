@@ -140,7 +140,7 @@ export const HTTPStatusCode = {
 } as const;
 
 export type HTTPStatusCode = keyof typeof HTTPStatusCode;
-export type HTTPStatusCodeNumber = typeof HTTPStatusCode[HTTPStatusCode];
+export type HTTPStatusCodeNumber = (typeof HTTPStatusCode)[HTTPStatusCode];
 
 /**
  * Hook called after a response is received and parsed.
