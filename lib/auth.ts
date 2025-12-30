@@ -65,16 +65,22 @@ export class ApiKeyAuth implements AuthProvider {
     }
   }
   apply({ url, init }: AuthContext) {
+    const value = this.opts.value;
     if (this.opts.header) {
-      init.headers = { ...(init.headers as any), [this.opts.header]: this.opts.value };
+      if (init.headers instanceof Headers) {
+        init.headers.set(this.opts.header, value);
+      } else if (Array.isArray(init.headers)) {
+        init.headers.push([this.opts.header, value]);
+      } else {
+        init.headers = { ...init.headers, [this.opts.header]: value };
+      }
     } else if (this.opts.query) {
       const u = new URL(url);
-      u.searchParams.set(this.opts.query, this.opts.value);
+      u.searchParams.set(this.opts.query, value);
       init.__urlOverride = u.toString();
     }
   }
 }
-
 /**
  * Bearer token authentication provider.
  * Supports both static tokens and dynamic token fetching (e.g., for OAuth2 refresh).
@@ -91,12 +97,19 @@ export class ApiKeyAuth implements AuthProvider {
  * ```
  */
 export class BearerTokenAuth implements AuthProvider {
-  constructor(private getToken: () => Promise<string> | string) {}
+  constructor(private getToken: () => Promise<string> | string) { }
   async apply({ init }: AuthContext) {
     const token = await this.getToken();
     if (!token) {
       throw new Error('BearerTokenAuth: token is empty or undefined');
     }
-    init.headers = { ...(init.headers as any), Authorization: `Bearer ${token}` };
+    const authHeader = `Bearer ${token}`;
+    if (init.headers instanceof Headers) {
+      init.headers.set('Authorization', authHeader);
+    } else if (Array.isArray(init.headers)) {
+      init.headers.push(['Authorization', authHeader]);
+    } else {
+      init.headers = { ...init.headers, Authorization: authHeader };
+    }
   }
 }

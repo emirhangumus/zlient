@@ -1,5 +1,7 @@
+import { z } from 'zod';
 import type { AuthProvider } from '../auth';
 import { NoAuth } from '../auth';
+import { Endpoint, EndpointConfig } from '../endpoint/base-endpoint';
 import { LoggerUtil, NoOpLogger } from '../logger';
 import { MetricsCollector, NoOpMetricsCollector } from '../metrics';
 import {
@@ -7,6 +9,8 @@ import {
   ClientOptions,
   FetchLike,
   HTTPMethod,
+  HTTPStatusCode,
+  HTTPStatusCodeNumber,
   Interceptors,
   RequestOptions,
   RetryStrategy,
@@ -68,6 +72,15 @@ export class HttpClient {
       jitter: 0.2,
       retryMethods: ['GET', 'HEAD'],
     };
+
+    // Default retryStatusCodes if not provided
+    if (!this.retry.retryStatusCodes) {
+      this.retry.retryStatusCodes = (Object.keys(HTTPStatusCode) as (keyof typeof HTTPStatusCode)[])
+        .filter(key => {
+          const code = HTTPStatusCode[key];
+          return typeof code === 'number' && code >= 500;
+        });
+    }
 
     // Validate retry configuration
     if (this.retry.maxRetries < 0) {
@@ -206,7 +219,7 @@ export class HttpClient {
     path: string,
     body?: unknown,
     options?: RequestOptions
-  ): Promise<{ data: T; response: Response }> {
+  ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
     const startTime = Date.now();
     const base = this.resolveBaseUrl(options?.baseUrlKey);
     let url = `${base}${path}${toQueryString(options?.query)}`;
@@ -253,19 +266,7 @@ export class HttpClient {
         const req = new Request(url, init);
 
         const res = await this.fetchImpl(req);
-        if (!res.ok) {
-          // Read response safely
-          let text = '';
-          try {
-            text = await res.text();
-          } catch (readError) {
-            text = `Failed to read response: ${readError instanceof Error ? readError.message : String(readError)}`;
-          }
-          throw new ApiError(`HTTP ${res.status}: ${res.statusText}`, {
-            status: res.status,
-            details: text,
-          });
-        }
+        const status = res.status as HTTPStatusCodeNumber;
         const contentType = res.headers.get('content-type') || '';
         const data = contentType.includes('json') ? await res.json() : await res.text();
         await this.runAfterHooks(new Request(url, init), res, data);
@@ -287,7 +288,7 @@ export class HttpClient {
           success: true,
         });
 
-        return { data: data as T, response: res };
+        return { data: data as T, status: status };
       } catch (error) {
         const duration = Date.now() - startTime;
         this.logger.error('HTTP request failed', error as Error, {
@@ -313,27 +314,29 @@ export class HttpClient {
     };
 
     const canRetry = ({
-      response,
       error,
     }: {
-      response?: Response;
       error?: unknown;
-      attempt: number;
     }) => {
       // Don't retry timeouts or aborts
       if (error && typeof error === 'object' && 'name' in error) {
         const errorName = (error as { name?: string }).name;
         if (errorName === 'AbortError' || errorName === 'TimeoutError') return false;
       }
-      // Retry on network errors or 5xx
-      if (error instanceof ApiError && error.status && error.status >= 500) return true;
-      if (error && !response) return true; // network error
+      // Retry on network errors or configured status codes
+      if (error instanceof ApiError && error.status) {
+        const retryCodes = this.retry.retryStatusCodes;
+        if (retryCodes?.some(codeKey => HTTPStatusCode[codeKey] === error.status)) {
+          return true;
+        }
+      }
       return false;
     };
 
     if (!this.retry.retryMethods?.includes(method)) {
       return doFetch();
     }
+
     return this.withRetry(doFetch, canRetry);
   }
 
@@ -348,7 +351,7 @@ export class HttpClient {
   async get<T = unknown>(
     path: string,
     options?: RequestOptions
-  ): Promise<{ data: T; response: Response }> {
+  ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
     return this.request<T>('GET', path, undefined, options);
   }
 
@@ -364,7 +367,7 @@ export class HttpClient {
     path: string,
     body?: unknown,
     options?: RequestOptions
-  ): Promise<{ data: T; response: Response }> {
+  ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
     return this.request<T>('POST', path, body, options);
   }
 
@@ -380,7 +383,7 @@ export class HttpClient {
     path: string,
     body?: unknown,
     options?: RequestOptions
-  ): Promise<{ data: T; response: Response }> {
+  ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
     return this.request<T>('PUT', path, body, options);
   }
 
@@ -396,7 +399,7 @@ export class HttpClient {
     path: string,
     body?: unknown,
     options?: RequestOptions
-  ): Promise<{ data: T; response: Response }> {
+  ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
     return this.request<T>('PATCH', path, body, options);
   }
 
@@ -411,7 +414,24 @@ export class HttpClient {
   async delete<T = unknown>(
     path: string,
     options?: RequestOptions
-  ): Promise<{ data: T; response: Response }> {
+  ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
     return this.request<T>('DELETE', path, undefined, options);
+  }
+
+  /**
+   * Create a strongly-typed endpoint builder.
+   *
+   * @param config - Endpoint configuration
+   * @returns Endpoint instance
+   */
+  createEndpoint<
+    ResSchema extends z.ZodType | Record<number, z.ZodType>,
+    ReqSchema extends z.ZodType | undefined = undefined,
+    QuerySchema extends z.ZodType | undefined = undefined,
+    PathSchema extends z.ZodType | undefined = undefined,
+  >(
+    config: EndpointConfig<ResSchema, ReqSchema, QuerySchema, PathSchema>
+  ): Endpoint<ResSchema, ReqSchema, QuerySchema, PathSchema> {
+    return new Endpoint(this, config);
   }
 }

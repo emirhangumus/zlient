@@ -89,16 +89,26 @@ export class InMemoryMetricsCollector implements MetricsCollector {
     }
 
     const successful = this.metrics.filter((m) => m.success).length;
-    const durations = this.metrics.map((m) => m.durationMs);
-    const sum = durations.reduce((a, b) => a + b, 0);
+
+    // Calculate stats in a single pass to avoid stack overflow with spread operator
+    let sum = 0;
+    let min = Infinity;
+    let max = -Infinity;
+
+    for (const m of this.metrics) {
+      const d = m.durationMs;
+      sum += d;
+      if (d < min) min = d;
+      if (d > max) max = d;
+    }
 
     return {
       total: this.metrics.length,
       successful,
       failed: this.metrics.length - successful,
       avgDurationMs: sum / this.metrics.length,
-      minDurationMs: Math.min(...durations),
-      maxDurationMs: Math.max(...durations),
+      minDurationMs: min === Infinity ? 0 : min,
+      maxDurationMs: max === -Infinity ? 0 : max,
     };
   }
 

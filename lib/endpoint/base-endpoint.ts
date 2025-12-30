@@ -1,172 +1,120 @@
 import { z } from 'zod';
 import { HttpClient } from '../http/http-client';
-import { HTTPMethod } from '../types';
+import { HTTPMethod, SchemaDefinitionError } from '../types';
 import { parseOrThrow } from '../validation';
 
-/**
- * Request configuration for endpoint calls.
- * Wrapper object containing all request parameters.
- *
- * @template ReqSchema - Zod schema for request validation
- * @template PathParams - Type for path parameters
- * @template QueryParams - Type for query parameters
- */
-export type EndpointCallConfig<
-  ReqSchema extends z.ZodType,
-  PathParams = never,
-  QueryParams = never,
+export type EndpointConfig<
+  ResSchema extends z.ZodType | Record<number, z.ZodType>,
+  ReqSchema extends z.ZodType | undefined = undefined,
+  QuerySchema extends z.ZodType | undefined = undefined,
+  PathSchema extends z.ZodType | undefined = undefined,
 > = {
-  /** Request body data (for POST, PUT, PATCH, etc.) or request args */
-  data?: z.infer<ReqSchema>;
-  /** Path parameters for dynamic path construction */
-  pathParams?: PathParams;
-  /** Query string parameters */
-  query?: QueryParams;
-  /** Request headers */
-  headers?: Record<string, string>;
-  /** Override base URL for this call */
+  method: keyof typeof HTTPMethod;
+  path: string | ((params: z.infer<Exclude<PathSchema, undefined>>) => string);
+  response: ResSchema;
+  request?: ReqSchema;
+  query?: QuerySchema;
+  pathParams?: PathSchema;
   baseUrlKey?: string;
-  /** Abort controller signal for cancellation */
-  signal?: globalThis.AbortSignal;
+  description?: string;
 };
 
-/**
- * Generic, strongly-typed endpoint with Zod schemas for request and response validation.
- * Extend this class to create type-safe API endpoints.
- *
- * @template ReqSchema - Zod schema for request validation
- * @template ResSchema - Zod schema for response validation
- * @template PathParams - Type for path parameters (optional)
- * @template QueryParams - Type for query parameters (optional)
- *
- * @example
- * ```ts
- * const UserSchema = z.object({ id: z.number(), name: z.string() });
- * const CreateUserSchema = z.object({ name: z.string() });
- *
- * type UserPathParams = { id: string };
- * type UserQueryParams = { include?: string; limit?: number };
- *
- * class GetUser extends BaseEndpoint<
- *   typeof CreateUserSchema,
- *   typeof UserSchema,
- *   UserPathParams,
- *   UserQueryParams
- * > {
- *   protected method = 'GET' as const;
- *   protected path = (params: UserPathParams) => `/users/${params.id}`;
- *
- *   constructor(client: HttpClient) {
- *     super(client, {
- *       requestSchema: CreateUserSchema,
- *       responseSchema: UserSchema
- *     });
- *   }
- * }
- *
- * // Usage:
- * const user = await endpoint.call({
- *   pathParams: { id: '123' },
- *   query: { include: 'posts', limit: 10 }
- * });
- * ```
- */
-export abstract class BaseEndpoint<
-  ReqSchema extends z.ZodType,
-  ResSchema extends z.ZodType,
-  PathParams = never,
-  QueryParams = never,
+export type EndpointCallParams<
+  ReqSchema extends z.ZodType | undefined,
+  QuerySchema extends z.ZodType | undefined,
+  PathSchema extends z.ZodType | undefined,
+> = {
+  data?: ReqSchema extends z.ZodType ? z.infer<ReqSchema> : never;
+  query?: QuerySchema extends z.ZodType ? z.infer<QuerySchema> : never;
+  pathParams?: PathSchema extends z.ZodType ? z.infer<PathSchema> : never;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+};
+
+// Helper to extract the response type from a schema which might be a single ZodType or a status map
+type InferResponse<S> = S extends z.ZodType
+  ? z.infer<S>
+  : S extends Record<number, z.ZodType>
+  ? z.infer<S[keyof S]>
+  : never;
+
+export class Endpoint<
+  ResSchema extends z.ZodType | Record<number, z.ZodType>,
+  ReqSchema extends z.ZodType | undefined,
+  QuerySchema extends z.ZodType | undefined,
+  PathSchema extends z.ZodType | undefined,
 > {
-  /** HTTP method for this endpoint */
-  protected abstract readonly method: keyof typeof HTTPMethod;
-  /** URL path (can be a function for dynamic paths) */
-  protected abstract readonly path: string | ((params: PathParams) => string);
-  /** Additional options for the request */
-  protected readonly options?: {
-    /** Override base URL for this call */
-    baseUrlKey?: string;
-  };
-  /** Optional request schema for validation */
-  protected readonly requestSchema?: ReqSchema;
-  /** Response schema for validation */
-  protected readonly responseSchema: ResSchema;
-
-  /**
-   * @param client - HttpClient instance
-   * @param cfg - Configuration with request and response schemas
-   */
   constructor(
-    protected client: HttpClient,
-    cfg: {
-      requestSchema?: ReqSchema;
-      responseSchema: ResSchema;
-    }
-  ) {
-    this.requestSchema = cfg.requestSchema;
-    this.responseSchema = cfg.responseSchema;
-  }
+    private client: HttpClient,
+    private config: EndpointConfig<ResSchema, ReqSchema, QuerySchema, PathSchema>
+  ) { }
 
-  /**
-   * Call the endpoint with strong typing derived from schemas.
-   * Validates request data before sending and response data after receiving.
-   *
-   * @param config - Request configuration object containing all parameters
-   * @returns Promise resolving to validated response data (typed by ResSchema)
-   * @throws {ZodError} If request validation fails
-   * @throws {ApiError} If response validation fails or request fails
-   *
-   * @example
-   * ```ts
-   * const endpoint = new GetUser(client);
-   * const user = await endpoint.call({
-   *   pathParams: { id: '123' },
-   *   query: { include: 'posts' }
-   * });
-   * // With additional options:
-   * const user = await endpoint.call({
-   *   data: { name: 'John' },
-   *   pathParams: { id: '123' },
-   *   headers: { 'X-Custom': 'value' },
-   *   query: { include: 'posts' }
-   * });
-   * ```
-   */
   async call(
-    config: EndpointCallConfig<ReqSchema, PathParams, QueryParams> = {} as EndpointCallConfig<
-      ReqSchema,
-      PathParams,
-      QueryParams
-    >
-  ): Promise<z.infer<ResSchema>> {
-    const { data, query, headers, baseUrlKey, signal, pathParams } = config;
+    params: EndpointCallParams<ReqSchema, QuerySchema, PathSchema>
+  ): Promise<InferResponse<ResSchema>> {
+    const { data, query, pathParams, headers, signal } = params;
 
-    // Validate request body/params before sending (when schema provided)
-    if (this.requestSchema && data !== undefined) {
-      const parsed = this.requestSchema.safeParse(data);
+    // Validate Request Body
+    if (this.config.request && data !== undefined) {
+      const parsed = this.config.request.safeParse(data);
       if (!parsed.success) throw parsed.error;
     }
 
-    // Build path - use pathParams if provided, otherwise use data for backwards compatibility
-    const pathArgs = (pathParams ?? data) as PathParams;
-    const path = typeof this.path === 'function' ? this.path(pathArgs) : this.path;
+    // Validate Query Params
+    if (this.config.query && query !== undefined) {
+      const parsed = this.config.query.safeParse(query);
+      if (!parsed.success) throw parsed.error;
+    }
 
-    // For GET/HEAD methods, don't send body
-    const shouldHaveBody = this.method !== 'GET' && this.method !== 'HEAD';
-    const body = shouldHaveBody ? data : undefined;
+    // Validate Path Params
+    if (this.config.pathParams && pathParams !== undefined) {
+      const parsed = this.config.pathParams.safeParse(pathParams);
+      if (!parsed.success) throw parsed.error;
+    }
 
-    // Convert query params to the format expected by http-client
-    const queryForRequest = query as
-      | Record<string, string | number | boolean | undefined>
-      | URLSearchParams
-      | undefined;
+    // Check for missing required params
+    if (this.config.request && data === undefined) {
+      throw new Error('Missing required request body (data)');
+    }
+    if (this.config.pathParams && pathParams === undefined) {
+      throw new Error('Missing required path parameters (pathParams)');
+    }
 
-    const { data: responseData } = await this.client.request(this.method, path, body, {
-      query: queryForRequest,
-      headers,
-      baseUrlKey: baseUrlKey ?? this.options?.baseUrlKey,
-      signal,
-    });
+    // Resolve Path
+    let pathStr: string;
+    if (typeof this.config.path === 'function') {
+      if (!pathParams) throw new Error('Path function requires pathParams');
+      pathStr = this.config.path(pathParams as any);
+    } else {
+      pathStr = this.config.path;
+    }
 
-    return parseOrThrow<z.infer<ResSchema>>(this.responseSchema, responseData);
+    const { data: responseData, status } = await this.client.request(
+      this.config.method,
+      pathStr,
+      data,
+      {
+        query: query as any,
+        headers,
+        baseUrlKey: this.config.baseUrlKey,
+        signal,
+      }
+    );
+
+    // Handle Response Validation
+    const schema = this.config.response;
+    if (schema instanceof z.ZodType) {
+      // Single schema for all success codes
+      return parseOrThrow(schema, responseData) as InferResponse<ResSchema>;
+    }
+
+    // Map of status codes
+    const specificSchema = (schema as Record<number, z.ZodType>)[status];
+    if (!specificSchema) {
+      // Fallback or error? For now, rigorous error.
+      throw new SchemaDefinitionError(status);
+    }
+
+    return parseOrThrow(specificSchema, responseData) as InferResponse<ResSchema>;
   }
 }

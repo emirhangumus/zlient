@@ -3,7 +3,7 @@ import { AuthProvider } from './auth';
 import { Logger } from './logger';
 import { MetricsCollector } from './metrics';
 
-export type Dictionary<T = unknown> = Record<string, T>;
+export type Dictionary<T> = Record<string, T>;
 
 export type FetchLike = (input: string | Request | URL, init?: RequestInit) => Promise<Response>;
 
@@ -22,8 +22,7 @@ export type FetchLike = (input: string | Request | URL, init?: RequestInit) => P
  */
 export type BaseUrlMap = {
   default: string;
-  [service: string]: string;
-};
+} & Record<string, string>;
 
 /**
  * Configuration for retry behavior on failed requests.
@@ -48,6 +47,8 @@ export type RetryStrategy = {
   jitter?: number;
   /** HTTP methods eligible for retry */
   retryMethods?: (keyof typeof HTTPMethod)[];
+  /** HTTP status codes eligible for retry */
+  retryStatusCodes?: (keyof typeof HTTPStatusCode)[];
   /** Custom function to determine if a request should be retried */
   shouldRetry?: (ctx: { attempt: number; error?: unknown; response?: Response }) => boolean;
 };
@@ -63,6 +64,83 @@ export const HTTPMethod = {
 } as const;
 
 export type HttpMethod = keyof typeof HTTPMethod;
+
+export const HTTPStatusCode = {
+  // 1xx — Informational
+  CONTINUE: 100,
+  SWITCHING_PROTOCOLS: 101,
+  PROCESSING: 102,
+  EARLY_HINTS: 103,
+
+  // 2xx — Success
+  OK: 200,
+  CREATED: 201,
+  ACCEPTED: 202,
+  NON_AUTHORITATIVE_INFORMATION: 203,
+  NO_CONTENT: 204,
+  RESET_CONTENT: 205,
+  PARTIAL_CONTENT: 206,
+  MULTI_STATUS: 207,
+  ALREADY_REPORTED: 208,
+  IM_USED: 226,
+
+  // 3xx — Redirection
+  MULTIPLE_CHOICES: 300,
+  MOVED_PERMANENTLY: 301,
+  FOUND: 302,
+  SEE_OTHER: 303,
+  NOT_MODIFIED: 304,
+  USE_PROXY: 305,
+  TEMPORARY_REDIRECT: 307,
+  PERMANENT_REDIRECT: 308,
+
+  // 4xx — Client Errors
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  PAYMENT_REQUIRED: 402,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  METHOD_NOT_ALLOWED: 405,
+  NOT_ACCEPTABLE: 406,
+  PROXY_AUTHENTICATION_REQUIRED: 407,
+  REQUEST_TIMEOUT: 408,
+  CONFLICT: 409,
+  GONE: 410,
+  LENGTH_REQUIRED: 411,
+  PRECONDITION_FAILED: 412,
+  PAYLOAD_TOO_LARGE: 413,
+  URI_TOO_LONG: 414,
+  UNSUPPORTED_MEDIA_TYPE: 415,
+  RANGE_NOT_SATISFIABLE: 416,
+  EXPECTATION_FAILED: 417,
+  IM_A_TEAPOT: 418,
+  MISDIRECTED_REQUEST: 421,
+  UNPROCESSABLE_ENTITY: 422,
+  LOCKED: 423,
+  FAILED_DEPENDENCY: 424,
+  TOO_EARLY: 425,
+  UPGRADE_REQUIRED: 426,
+  PRECONDITION_REQUIRED: 428,
+  TOO_MANY_REQUESTS: 429,
+  REQUEST_HEADER_FIELDS_TOO_LARGE: 431,
+  UNAVAILABLE_FOR_LEGAL_REASONS: 451,
+
+  // 5xx — Server Errors
+  INTERNAL_SERVER_ERROR: 500,
+  NOT_IMPLEMENTED: 501,
+  BAD_GATEWAY: 502,
+  SERVICE_UNAVAILABLE: 503,
+  GATEWAY_TIMEOUT: 504,
+  HTTP_VERSION_NOT_SUPPORTED: 505,
+  VARIANT_ALSO_NEGOTIATES: 506,
+  INSUFFICIENT_STORAGE: 507,
+  LOOP_DETECTED: 508,
+  NOT_EXTENDED: 510,
+  NETWORK_AUTHENTICATION_REQUIRED: 511,
+} as const;
+
+export type HTTPStatusCode = keyof typeof HTTPStatusCode;
+export type HTTPStatusCodeNumber = typeof HTTPStatusCode[HTTPStatusCode];
 
 /**
  * Hook called after a response is received and parsed.
@@ -153,7 +231,7 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = options?.status;
     this.details = options?.details;
-    this.cause = options?.cause as any;
+    this.cause = options?.cause;
     this.zodError = options?.zodError;
 
     // Maintains proper stack trace for where error was thrown
@@ -195,6 +273,22 @@ export class ApiError extends Error {
       zodError: this.zodError?.issues,
       stack: this.stack,
     };
+  }
+}
+
+/**
+ * Error thrown when an endpoint receives a response with a status code
+ * that has no defined schema in the endpoint configuration.
+ */
+export class SchemaDefinitionError extends Error {
+  constructor(public status: number) {
+    super(`No schema defined for status code ${status}`);
+    this.name = 'SchemaDefinitionError';
+
+    // Maintains proper stack trace
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, SchemaDefinitionError);
+    }
   }
 }
 
