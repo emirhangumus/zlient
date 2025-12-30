@@ -4,6 +4,7 @@ import { defineConfig } from 'vitepress';
 export default defineConfig({
     title: 'Zlient',
     description: 'Type-safe HTTP client with Zod validation',
+    base: '/zlient/',
     themeConfig: {
         // https://vitepress.dev/reference/default-theme-config
         nav: [
