@@ -43,6 +43,7 @@ export class HttpClient {
   private auth: AuthProvider;
   private logger: LoggerUtil;
   private metrics: MetricsCollector;
+  private onUnauthenticated?: (response: Response) => Promise<boolean> | boolean;
 
   /**
    * Creates a new HTTP client instance.
@@ -102,6 +103,7 @@ export class HttpClient {
     this.auth = opts['auth'] ?? new NoAuth();
     this.logger = new LoggerUtil(opts.logger ?? new NoOpLogger());
     this.metrics = opts.metrics ?? new NoOpMetricsCollector();
+    this.onUnauthenticated = opts.onUnauthenticated;
   }
 
   /**
@@ -251,66 +253,92 @@ export class HttpClient {
     await this.auth.apply({ url, init, options });
     if (init.__urlOverride) url = init.__urlOverride;
     await this.runBeforeHooks(url, init);
+    // Track refresh attempts to prevent infinite loops
+    let refreshAttempted = false;
 
     const doFetch = async () => {
-      // Apply timeout if configured
-      let timeoutId: NodeJS.Timeout | number | undefined;
-      if (this.timeoutMs && !options?.signal) {
-        timeoutId = setTimeout(() => {
-          const timeoutError = new Error('Request timeout');
-          timeoutError.name = 'TimeoutError';
-          controller.abort(timeoutError);
-        }, this.timeoutMs);
-      }
+      // Loop for potential token refresh retry
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        // Apply timeout if configured
+        let timeoutId: NodeJS.Timeout | number | undefined;
+        if (this.timeoutMs && !options?.signal) {
+          timeoutId = setTimeout(() => {
+            const timeoutError = new Error('Request timeout');
+            timeoutError.name = 'TimeoutError';
+            controller.abort(timeoutError);
+          }, this.timeoutMs);
+        }
 
-      try {
-        const req = new Request(url, init);
+        try {
+          // Re-apply auth headers if this is a retry
+          if (refreshAttempted) {
+            const freshInit = { ...init };
+            // We need to re-run apply to get new token
+            await this.auth.apply({ url, init: freshInit, options });
+            // Update headers with potentially new token
+            init.headers = freshInit.headers;
+          }
 
-        const res = await this.fetchImpl(req);
-        const status = res.status as HTTPStatusCodeNumber;
-        const contentType = res.headers.get('content-type') || '';
-        const data = contentType.includes('json') ? await res.json() : await res.text();
-        await this.runAfterHooks(new Request(url, init), res, data);
+          const req = new Request(url, init);
 
-        const duration = Date.now() - startTime;
-        this.logger.info('HTTP request successful', {
-          method,
-          url,
-          status: res.status,
-          durationMs: duration,
-        });
+          const res = await this.fetchImpl(req);
 
-        this.metrics.collect({
-          method,
-          path,
-          status: res.status,
-          durationMs: duration,
-          timestamp: new Date().toISOString(),
-          success: true,
-        });
+          if (res.status === 401 && this.onUnauthenticated && !refreshAttempted) {
+            const shouldRetry = await this.onUnauthenticated(res.clone() as unknown as Response);
+            if (shouldRetry) {
+              refreshAttempted = true;
+              // Clear timeout before retrying
+              if (timeoutId) clearTimeout(timeoutId);
+              continue;
+            }
+          }
 
-        return { data: data as T, status: status };
-      } catch (error) {
-        const duration = Date.now() - startTime;
-        this.logger.error('HTTP request failed', error as Error, {
-          method,
-          url,
-          durationMs: duration,
-        });
+          const status = res.status as HTTPStatusCodeNumber;
+          const contentType = res.headers.get('content-type') || '';
+          const data = contentType.includes('json') ? await res.json() : await res.text();
+          await this.runAfterHooks(new Request(url, init), res, data);
 
-        this.metrics.collect({
-          method,
-          path,
-          status: error instanceof ApiError ? error.status : undefined,
-          durationMs: duration,
-          timestamp: new Date().toISOString(),
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        });
+          const duration = Date.now() - startTime;
+          this.logger.info('HTTP request successful', {
+            method,
+            url,
+            status: res.status,
+            durationMs: duration,
+          });
 
-        throw error;
-      } finally {
-        if (timeoutId) clearTimeout(timeoutId);
+          this.metrics.collect({
+            method,
+            path,
+            status: res.status,
+            durationMs: duration,
+            timestamp: new Date().toISOString(),
+            success: true,
+          });
+
+          return { data: data as T, status: status };
+        } catch (error) {
+          const duration = Date.now() - startTime;
+          this.logger.error('HTTP request failed', error as Error, {
+            method,
+            url,
+            durationMs: duration,
+          });
+
+          this.metrics.collect({
+            method,
+            path,
+            status: error instanceof ApiError ? error.status : undefined,
+            durationMs: duration,
+            timestamp: new Date().toISOString(),
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+
+          throw error;
+        } finally {
+          if (timeoutId) clearTimeout(timeoutId);
+        }
       }
     };
 

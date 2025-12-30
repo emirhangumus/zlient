@@ -202,6 +202,12 @@ export interface ClientOptions {
   logger?: Logger;
   /** Metrics collector */
   metrics?: MetricsCollector;
+  /**
+   * Callback to handle 401 Unauthorized responses.
+   * Return true to retry the request (e.g. after refreshing tokens),
+   * or false to return the 401 response as is.
+   */
+  onUnauthenticated?: (response: Response) => Promise<boolean> | boolean;
 }
 
 export type SafeParseResult<T> = { success: true; data: T } | { success: false; error: ZodError };
