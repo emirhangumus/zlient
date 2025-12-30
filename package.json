@@ -1,6 +1,6 @@
 {
   "name": "zlient",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "",
   "repository": {
     "type": "git",
@@ -72,5 +72,4 @@
     "test": "bun test"
   },
   "type": "module"
-
 }
