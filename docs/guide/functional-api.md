@@ -41,6 +41,7 @@ You can validate every part of the request lifecycle:
 - `response`: The expected JSON response from the server.
 
 ```typescript
+// 1. GET with Query Params & Response Map
 const searchUsers = client.createEndpoint({
   method: 'GET',
   path: '/users/search',
@@ -50,9 +51,46 @@ const searchUsers = client.createEndpoint({
     page: z.number().default(1)
   }),
   
+  response: {
+    200: z.object({
+      results: z.array(z.object({ id: z.string(), name: z.string() })),
+      total: z.number()
+    })
+  }
+});
+
+// 2. POST with Request Body
+const createUser = client.createEndpoint({
+  method: 'POST',
+  path: '/users',
+  
+  // Validate request body
+  request: z.object({
+    name: z.string().min(2),
+    email: z.string().email(),
+    role: z.enum(['admin', 'user'])
+  }),
+  
+  // Validate response body
   response: z.object({
-    results: z.array(z.object({ id: z.string(), name: z.string() })),
-    total: z.number()
+    id: z.string(),
+    createdAt: z.string().datetime()
+  })
+});
+
+// 3. GET with Path Params
+const getUser = client.createEndpoint({
+  method: 'GET',
+  // Type-safe path construction
+  path: ({ id }) => `/users/${id}`,
+  
+  pathParams: z.object({
+    id: z.string().uuid()
+  }),
+  
+  response: z.object({
+    id: z.string(),
+    name: z.string()
   })
 });
 ```

@@ -336,6 +336,8 @@ export type RequestOptions = {
   signal?: AbortSignal;
   /** Custom query params */
   query?: URLSearchParams | Record<string, string | number | boolean | undefined>;
+  /** Skip authentication for this request */
+  skipAuth?: boolean;
 };
 
 /**

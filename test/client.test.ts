@@ -167,4 +167,81 @@ describe('Zlient', () => {
             expect(summary.minDurationMs).toBeGreaterThanOrEqual(0);
         });
     });
+
+    describe('Advanced Features', () => {
+        it('should use correct base URL when baseUrlKey is provided', async () => {
+            client = new HttpClient({
+                baseUrls: {
+                    default: 'https://api.default.com',
+                    other: 'https://api.other.com'
+                },
+                fetch: mockFetch as any,
+            });
+
+            await client.get('/test', { baseUrlKey: 'other' });
+
+            const req = mockFetch.mock.calls[mockFetch.mock.calls.length - 1][0] as Request;
+            expect(req.url).toBe('https://api.other.com/test');
+        });
+
+        it('should skip authentication when skipAuth is true', async () => {
+            let authCalled = false;
+            client.setAuth({
+                apply() {
+                    authCalled = true;
+                }
+            });
+
+            await client.get('/public', { skipAuth: true });
+
+            expect(authCalled).toBe(false);
+        });
+
+        it('should run interceptors', async () => {
+            const beforeSpy = mock(async () => { });
+            const afterSpy = mock(async () => { });
+
+            client = new HttpClient({
+                baseUrls: { default: 'https://api.example.com' },
+                fetch: mockFetch as any,
+                interceptors: {
+                    beforeRequest: [beforeSpy],
+                    afterResponse: [afterSpy]
+                }
+            });
+
+            await client.get('/test');
+
+            expect(beforeSpy).toHaveBeenCalledTimes(1);
+            expect(afterSpy).toHaveBeenCalledTimes(1);
+        });
+
+        it('should timeout request', async () => {
+            // Mock fetch to be slow and respect abort signal
+            const slowFetch = mock((req: Request) => {
+                return new Promise((resolve, reject) => {
+                    const timer = setTimeout(() => resolve(new Response('ok')), 100);
+                    if (req.signal) {
+                        req.signal.addEventListener('abort', () => {
+                            clearTimeout(timer);
+                            reject(req.signal.reason);
+                        });
+                    }
+                });
+            });
+
+            client = new HttpClient({
+                baseUrls: { default: 'https://api.example.com' },
+                fetch: slowFetch as any,
+                timeout: { requestTimeoutMs: 10 } // Very short timeout
+            });
+
+            try {
+                await client.get('/test');
+                expect(true).toBe(false); // Should have thrown
+            } catch (e: any) {
+                expect(e.name).toBe('TimeoutError');
+            }
+        });
+    });
 });

@@ -15,7 +15,10 @@ export type EndpointConfig<
   request?: ReqSchema;
   query?: QuerySchema;
   pathParams?: PathSchema;
-  baseUrlKey?: string;
+  advanced?: {
+    baseUrlKey?: string;
+    skipAuth?: boolean;
+  };
   description?: string;
 };
 
@@ -107,7 +110,8 @@ export class EndpointImpl<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         query: query as any,
         headers,
-        baseUrlKey: this.config.baseUrlKey,
+        baseUrlKey: this.config.advanced?.baseUrlKey,
+        skipAuth: this.config.advanced?.skipAuth,
         signal,
       }
     );

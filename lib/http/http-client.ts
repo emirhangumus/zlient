@@ -250,7 +250,9 @@ export class HttpClient {
       signal,
     };
 
-    await this.auth.apply({ url, init, options });
+    if (!options?.skipAuth) {
+      await this.auth.apply({ url, init, options });
+    }
     if (init.__urlOverride) url = init.__urlOverride;
     await this.runBeforeHooks(url, init);
     // Track refresh attempts to prevent infinite loops

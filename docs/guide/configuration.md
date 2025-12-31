@@ -43,8 +43,14 @@ Pass these as part of the argument object.
 ```typescript
 await endpoint({
   ...params,
-  // Override base URL (if supported by schema)
-  baseUrlKey: 'cdn',
+  
+  // Advanced options
+  advanced: {
+    // Override base URL (if supported by schema)
+    baseUrlKey: 'cdn',
+    // Skip authentication for this request
+    skipAuth: true
+  },
   
   // Merge these headers with default headers
   headers: { 'Cache-Control': 'no-cache' },
