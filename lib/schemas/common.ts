@@ -41,9 +41,7 @@ export const Timestamps = z.object({
  * Contains request tracking and debugging information.
  */
 export const Meta = z.object({
-  requestId: z.string().optional(),
   timestamp: z.iso.datetime().optional(),
-  traceId: z.string().optional(),
 });
 
 /**
@@ -79,14 +77,14 @@ export const ApiErrorSchema = z.object({
  * // {
  * //   success: true,
  * //   data: { id: 1, name: 'John' },
- * //   meta: { requestId: '...' }
+ * //   meta: { timestamp: '...' }
  * // }
  * ```
  */
-export const Envelope = <T extends z.ZodType>(inner: T) =>
+export const Envelope = <T extends z.ZodType, M extends z.ZodType>(inner: T, meta?: M) =>
   z.object({
     success: z.boolean(),
     data: inner.optional().nullable(),
     error: ApiErrorSchema.optional(),
-    meta: Meta.optional(),
+    meta: meta || Meta.optional(),
   });
