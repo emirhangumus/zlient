@@ -260,7 +260,6 @@ export class HttpClient {
 
     const doFetch = async () => {
       // Loop for potential token refresh retry
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         // Apply timeout if configured
         let timeoutId: NodeJS.Timeout | number | undefined;

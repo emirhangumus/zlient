@@ -81,10 +81,14 @@ export const ApiErrorSchema = z.object({
  * // }
  * ```
  */
-export const Envelope = <T extends z.ZodType, M extends z.ZodType>(inner: T, meta?: M) =>
-  z.object({
+export const Envelope = <T extends z.ZodType, M extends z.ZodType = z.ZodOptional<typeof Meta>>(
+  inner: T,
+  meta?: M
+) => {
+  return z.object({
     success: z.boolean(),
     data: inner.optional().nullable(),
     error: ApiErrorSchema.optional(),
-    meta: meta || Meta.optional(),
+    meta: (meta !== undefined ? meta : Meta.optional()) as M extends undefined ? z.ZodOptional<typeof Meta> : M,
   });
+}
