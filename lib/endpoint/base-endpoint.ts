@@ -18,6 +18,8 @@ export type EndpointConfig<
   advanced?: {
     baseUrlKey?: string;
     skipAuth?: boolean;
+    skipRequestValidation?: boolean;
+    skipResponseValidation?: boolean;
   };
   description?: string;
 };
@@ -66,20 +68,23 @@ export class EndpointImpl<
   ): Promise<InferResponse<ResSchema>> {
     const { data, query, pathParams, headers, signal } = params;
 
+    const skipRequestValidation = this.config.advanced?.skipRequestValidation ?? false;
+    const skipResponseValidation = this.config.advanced?.skipResponseValidation ?? false;
+
     // Validate Request Body
-    if (this.config.request && data !== undefined) {
+    if (!skipRequestValidation && this.config.request && data !== undefined) {
       const parsed = this.config.request.safeParse(data);
       if (!parsed.success) throw parsed.error;
     }
 
     // Validate Query Params
-    if (this.config.query && query !== undefined) {
+    if (!skipRequestValidation && this.config.query && query !== undefined) {
       const parsed = this.config.query.safeParse(query);
       if (!parsed.success) throw parsed.error;
     }
 
     // Validate Path Params
-    if (this.config.pathParams && pathParams !== undefined) {
+    if (!skipRequestValidation && this.config.pathParams && pathParams !== undefined) {
       const parsed = this.config.pathParams.safeParse(pathParams);
       if (!parsed.success) throw parsed.error;
     }
@@ -118,6 +123,10 @@ export class EndpointImpl<
 
     // Handle Response Validation
     const schema = this.config.response;
+    if (skipResponseValidation) {
+      return responseData as InferResponse<ResSchema>;
+    }
+
     if (schema instanceof z.ZodType) {
       // Single schema for all success codes
       return parseOrThrow(schema, responseData) as InferResponse<ResSchema>;
