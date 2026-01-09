@@ -238,15 +238,27 @@ export class HttpClient {
 
     const controller = new AbortController();
     const signal = options?.signal ?? controller.signal;
+
+    // Handle FormData, Blob, ArrayBuffer: pass through without stringifying
+    let requestBody: BodyInit | undefined;
+    if (body != null) {
+      if (body instanceof FormData) {
+        requestBody = body;
+        // Remove Content-Type header so browser can set it with proper boundary
+        delete headers['Content-Type'];
+      } else if (body instanceof Blob || body instanceof ArrayBuffer) {
+        requestBody = body;
+      } else if (headers['Content-Type']?.includes('json')) {
+        requestBody = JSON.stringify(body);
+      } else {
+        requestBody = String(body);
+      }
+    }
+
     const init: RequestInit & { __urlOverride?: string } = {
       method,
       headers,
-      body:
-        body != null
-          ? headers['Content-Type']?.includes('json')
-            ? JSON.stringify(body)
-            : String(body)
-          : undefined,
+      body: requestBody,
       signal,
     };
 

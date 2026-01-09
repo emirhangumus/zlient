@@ -118,6 +118,40 @@ const result = await createPost({ data: { title: 'Hello' } });
 // `result` type is the union of the 201 and 400 schemas
 ```
 
+### FormData Support
+
+Upload files and send multipart form data seamlessly. Zlient automatically detects `FormData`, `Blob`, and `ArrayBuffer` bodies and handles them correctly.
+
+```typescript
+// File upload with FormData
+const uploadFile = client.createEndpoint({
+  method: 'POST',
+  path: '/upload',
+  response: z.object({ fileId: z.string(), url: z.string() }),
+  advanced: {
+    skipRequestValidation: true, // FormData can't be validated with Zod
+  },
+});
+
+const formData = new FormData();
+formData.append('file', fileBlob, 'document.pdf');
+formData.append('description', 'My document');
+
+const result = await uploadFile({ data: formData });
+console.log(result.url);
+```
+
+You can also use the low-level `request` method directly:
+
+```typescript
+const formData = new FormData();
+formData.append('avatar', imageFile);
+
+const { data } = await client.post('/users/avatar', formData);
+```
+
+> **Note**: When using `FormData`, the `Content-Type` header is automatically removed so the browser can set it with the proper multipart boundary.
+
 ### Metrics & Logging
 
 Integrate with any monitoring stack (Datadog, Prometheus, etc.).

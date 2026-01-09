@@ -244,4 +244,87 @@ describe('Zlient', () => {
             }
         });
     });
+
+    describe('FormData Support', () => {
+        it('should send FormData without stringifying', async () => {
+            const formDataFetch = mock((req: Request) => {
+                return Promise.resolve(new Response(JSON.stringify({ fileId: 'abc123' }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' }
+                }));
+            });
+
+            client = new HttpClient({
+                baseUrls: { default: 'https://api.example.com' },
+                fetch: formDataFetch as any,
+            });
+
+            const formData = new FormData();
+            formData.append('file', new Blob(['test content'], { type: 'text/plain' }), 'test.txt');
+            formData.append('description', 'Test file');
+
+            const { data } = await client.post('/upload', formData);
+
+            expect(data).toEqual({ fileId: 'abc123' });
+            expect(formDataFetch).toHaveBeenCalledTimes(1);
+
+            const req = formDataFetch.mock.calls[0][0] as Request;
+            // Content-Type should be multipart/form-data with boundary (set by runtime)
+            const contentType = req.headers.get('Content-Type');
+            expect(contentType).toContain('multipart/form-data');
+            expect(contentType).toContain('boundary=');
+        });
+
+        it('should send FormData through endpoint with skipRequestValidation', async () => {
+            const formDataFetch = mock((req: Request) => {
+                return Promise.resolve(new Response(JSON.stringify({ fileId: 'xyz789', url: 'https://cdn.example.com/file.pdf' }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' }
+                }));
+            });
+
+            client = new HttpClient({
+                baseUrls: { default: 'https://api.example.com' },
+                fetch: formDataFetch as any,
+            });
+
+            const uploadFile = client.createEndpoint({
+                method: 'POST',
+                path: '/upload',
+                response: z.object({ fileId: z.string(), url: z.string() }),
+                advanced: {
+                    skipRequestValidation: true,
+                },
+            });
+
+            const formData = new FormData();
+            formData.append('document', new Blob(['PDF content'], { type: 'application/pdf' }), 'document.pdf');
+
+            const result = await uploadFile({ data: formData as any });
+
+            expect(result).toEqual({ fileId: 'xyz789', url: 'https://cdn.example.com/file.pdf' });
+        });
+
+        it('should send Blob directly without stringifying', async () => {
+            const blobFetch = mock((req: Request) => {
+                return Promise.resolve(new Response(JSON.stringify({ received: true }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' }
+                }));
+            });
+
+            client = new HttpClient({
+                baseUrls: { default: 'https://api.example.com' },
+                fetch: blobFetch as any,
+                headers: { 'Content-Type': 'application/octet-stream' },
+            });
+
+            const blob = new Blob(['binary data'], { type: 'application/octet-stream' });
+
+            const { data } = await client.post('/binary', blob);
+
+            expect(data).toEqual({ received: true });
+            expect(blobFetch).toHaveBeenCalledTimes(1);
+        });
+    });
 });
