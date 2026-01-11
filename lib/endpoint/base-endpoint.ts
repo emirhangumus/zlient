@@ -20,6 +20,7 @@ export type EndpointConfig<
     skipAuth?: boolean;
     skipRequestValidation?: boolean;
     skipResponseValidation?: boolean;
+    skipRetry?: boolean;
   };
   description?: string;
 };
@@ -117,6 +118,7 @@ export class EndpointImpl<
         headers,
         baseUrlKey: this.config.advanced?.baseUrlKey,
         skipAuth: this.config.advanced?.skipAuth,
+        skipRetry: this.config.advanced?.skipRetry,
         signal,
       }
     );

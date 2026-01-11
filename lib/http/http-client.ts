@@ -371,7 +371,7 @@ export class HttpClient {
       return false;
     };
 
-    if (!this.retry.retryMethods?.includes(method)) {
+    if (options?.skipRetry || !this.retry.retryMethods?.includes(method)) {
       return doFetch();
     }
 

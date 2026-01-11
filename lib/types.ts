@@ -338,6 +338,8 @@ export type RequestOptions = {
   query?: URLSearchParams | Record<string, string | number | boolean | undefined>;
   /** Skip authentication for this request */
   skipAuth?: boolean;
+  /** Skip retry logic for this request */
+  skipRetry?: boolean;
 };
 
 /**
