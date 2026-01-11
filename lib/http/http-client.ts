@@ -284,8 +284,8 @@ export class HttpClient {
         }
 
         try {
-          // Re-apply auth headers if this is a retry
-          if (refreshAttempted) {
+          // Re-apply auth headers if this is a retry (unless skipAuth is set)
+          if (refreshAttempted && !options?.skipAuth) {
             const freshInit = { ...init };
             // We need to re-run apply to get new token
             await this.auth.apply({ url, init: freshInit, options });
