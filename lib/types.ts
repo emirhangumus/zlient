@@ -48,7 +48,7 @@ export type RetryStrategy = {
   /** HTTP methods eligible for retry */
   retryMethods?: (keyof typeof HTTPMethod)[];
   /** HTTP status codes eligible for retry */
-  retryStatusCodes?: (keyof typeof HTTPStatusCode)[];
+  retryStatusCodes?: HTTPStatusCodeKey[];
   /** Custom function to determine if a request should be retried */
   shouldRetry?: (ctx: { attempt: number; error?: unknown; response?: Response }) => boolean;
 };
@@ -139,8 +139,8 @@ export const HTTPStatusCode = {
   NETWORK_AUTHENTICATION_REQUIRED: 511,
 } as const;
 
-export type HTTPStatusCode = keyof typeof HTTPStatusCode;
-export type HTTPStatusCodeNumber = (typeof HTTPStatusCode)[HTTPStatusCode];
+export type HTTPStatusCodeKey = keyof typeof HTTPStatusCode;
+export type HTTPStatusCodeNumber = (typeof HTTPStatusCode)[HTTPStatusCodeKey];
 
 /**
  * Hook called after a response is received and parsed.

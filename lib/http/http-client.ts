@@ -10,6 +10,7 @@ import {
   FetchLike,
   HTTPMethod,
   HTTPStatusCode,
+  HTTPStatusCodeKey,
   HTTPStatusCodeNumber,
   Interceptors,
   RequestOptions,
@@ -77,7 +78,7 @@ export class HttpClient {
     // Default retryStatusCodes if not provided
     if (!this.retry.retryStatusCodes) {
       this.retry.retryStatusCodes = (
-        Object.keys(HTTPStatusCode) as (keyof typeof HTTPStatusCode)[]
+        Object.keys(HTTPStatusCode) as HTTPStatusCodeKey[]
       ).filter((key) => {
         const code = HTTPStatusCode[key];
         return typeof code === 'number' && code >= 500;
