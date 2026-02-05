@@ -310,7 +310,26 @@ export class HttpClient {
 
           const status = res.status as HTTPStatusCodeNumber;
           const contentType = res.headers.get('content-type') || '';
-          const data = contentType.includes('json') ? await res.json() : await res.text();
+          
+          // Handle different response types appropriately
+          let data: any;
+          if (contentType.includes('json')) {
+            data = await res.json();
+          } else if (
+            contentType.includes('application/octet-stream') ||
+            contentType.includes('application/pdf') ||
+            contentType.includes('image/') ||
+            contentType.includes('video/') ||
+            contentType.includes('audio/') ||
+            contentType.startsWith('application/zip') ||
+            contentType.startsWith('application/x-')
+          ) {
+            // Return binary data as Blob for file downloads
+            data = await res.blob();
+          } else {
+            data = await res.text();
+          }
+          
           await this.runAfterHooks(new Request(url, init), res, data);
 
           const duration = Date.now() - startTime;
