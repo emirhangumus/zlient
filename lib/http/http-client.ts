@@ -487,9 +487,10 @@ export class HttpClient {
     ReqSchema extends z.ZodType | undefined = undefined,
     QuerySchema extends z.ZodType | undefined = undefined,
     PathSchema extends z.ZodType | undefined = undefined,
+    MustHeaderKeys extends readonly string[] = readonly [],
   >(
-    config: EndpointConfig<ResSchema, ReqSchema, QuerySchema, PathSchema>
-  ): EndpointCall<ResSchema, ReqSchema, QuerySchema, PathSchema> {
+    config: EndpointConfig<ResSchema, ReqSchema, QuerySchema, PathSchema, MustHeaderKeys>
+  ): EndpointCall<ResSchema, ReqSchema, QuerySchema, PathSchema, MustHeaderKeys> {
     const endpoint = new EndpointImpl(this, config);
     return (params) => endpoint.call(params);
   }

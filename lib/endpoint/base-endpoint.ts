@@ -8,6 +8,7 @@ export type EndpointConfig<
   ReqSchema extends z.ZodType | undefined = undefined,
   QuerySchema extends z.ZodType | undefined = undefined,
   PathSchema extends z.ZodType | undefined = undefined,
+  MustHeaderKeys extends readonly string[] = readonly [],
 > = {
   method: keyof typeof HTTPMethod;
   path: string | ((params: z.infer<Exclude<PathSchema, undefined>>) => string);
@@ -15,6 +16,7 @@ export type EndpointConfig<
   request?: ReqSchema;
   query?: QuerySchema;
   pathParams?: PathSchema;
+  mustHeaderKeys?: MustHeaderKeys;
   advanced?: {
     baseUrlKey?: string;
     skipAuth?: boolean;
@@ -25,17 +27,24 @@ export type EndpointConfig<
   description?: string;
 };
 
+// Helper type to create required headers from mustHeaderKeys
+type RequiredHeaders<Keys extends readonly string[]> = Keys extends readonly []
+  ? Record<string, string> | undefined
+  : { [K in Keys[number]]: string } & Record<string, string>;
+
 export type EndpointCallParams<
   ReqSchema extends z.ZodType | undefined,
   QuerySchema extends z.ZodType | undefined,
   PathSchema extends z.ZodType | undefined,
+  MustHeaderKeys extends readonly string[] = readonly [],
 > = {
   data?: ReqSchema extends z.ZodType ? z.infer<ReqSchema> : never;
   query?: QuerySchema extends z.ZodType ? z.infer<QuerySchema> : never;
   pathParams?: PathSchema extends z.ZodType ? z.infer<PathSchema> : never;
-  headers?: Record<string, string>;
   signal?: globalThis.AbortSignal;
-};
+} & (MustHeaderKeys extends readonly []
+  ? { headers?: Record<string, string> }
+  : { headers: RequiredHeaders<MustHeaderKeys> });
 
 // Helper to extract the response type from a schema which might be a single ZodType or a status map
 type InferResponse<S> = S extends z.ZodType
@@ -49,8 +58,9 @@ export type EndpointCall<
   ReqSchema extends z.ZodType | undefined,
   QuerySchema extends z.ZodType | undefined,
   PathSchema extends z.ZodType | undefined,
+  MustHeaderKeys extends readonly string[] = readonly [],
 > = (
-  params: EndpointCallParams<ReqSchema, QuerySchema, PathSchema>
+  params: EndpointCallParams<ReqSchema, QuerySchema, PathSchema, MustHeaderKeys>
 ) => Promise<InferResponse<ResSchema>>;
 
 export class EndpointImpl<
@@ -58,19 +68,33 @@ export class EndpointImpl<
   ReqSchema extends z.ZodType | undefined,
   QuerySchema extends z.ZodType | undefined,
   PathSchema extends z.ZodType | undefined,
+  MustHeaderKeys extends readonly string[] = readonly [],
 > {
   constructor(
     private client: HttpClient,
-    private config: EndpointConfig<ResSchema, ReqSchema, QuerySchema, PathSchema>
+    private config: EndpointConfig<ResSchema, ReqSchema, QuerySchema, PathSchema, MustHeaderKeys>
   ) { }
 
   async call(
-    params: EndpointCallParams<ReqSchema, QuerySchema, PathSchema>
+    params: EndpointCallParams<ReqSchema, QuerySchema, PathSchema, MustHeaderKeys>
   ): Promise<InferResponse<ResSchema>> {
-    const { data, query, pathParams, headers, signal } = params;
+    const { data, query, pathParams, signal } = params;
+    const headers = 'headers' in params ? params.headers : undefined;
 
     const skipRequestValidation = this.config.advanced?.skipRequestValidation ?? false;
     const skipResponseValidation = this.config.advanced?.skipResponseValidation ?? false;
+
+    // Validate required headers
+    if (this.config.mustHeaderKeys && this.config.mustHeaderKeys.length > 0) {
+      const missingHeaders = this.config.mustHeaderKeys.filter(
+        (key) => !headers || !(key in headers)
+      );
+      if (missingHeaders.length > 0) {
+        throw new Error(
+          `Missing required header(s): ${missingHeaders.join(', ')}`
+        );
+      }
+    }
 
     // Validate Request Body
     if (!skipRequestValidation && this.config.request && data !== undefined) {
