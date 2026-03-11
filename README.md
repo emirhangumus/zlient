@@ -6,28 +6,36 @@
 ![License](https://img.shields.io/npm/l/zlient?style=flat-square)
 ![Downloads](https://img.shields.io/npm/dm/zlient?style=flat-square)
 
-Build robust, type-safe API clients with automatic Zod validation, retry logic, and zero boilerplate.
+Build robust, type-safe API clients with runtime validation, retry logic, and zero boilerplate. Use **any** [Standard Schema](https://standardschema.dev) library — Zod, Valibot, ArkType, and more.
 
 ## Features
 
--   **Functional API**: Define endpoints with pure functions and automatic type inference.
--   **Type-Safe**: Full TypeScript support. Arguments and responses are strictly typed.
--   **Zod Validation**: Runtime validation for requests, responses, query params, and path params.
--   **Resilience**: Built-in exponential backoff retries and timeouts.
--   **Auth**: Logic-safe authentication providers (Bearer, API Key, Custom) that handle edge cases.
--   **Observability**: Hooks for structured logging and metrics.
+- **Standard Schema**: Use Zod, Valibot, ArkType, or any compatible validator. No lock-in.
+- **Functional API**: Define endpoints with pure functions and automatic type inference.
+- **Type-Safe**: Full TypeScript support. Arguments and responses are strictly typed.
+- **Runtime Validation**: Validate requests, responses, query params, and path params.
+- **Resilience**: Built-in exponential backoff retries and timeouts.
+- **Auth**: Logic-safe authentication providers (Bearer, API Key, Custom).
+- **Observability**: Hooks for structured logging and metrics.
 
 ---
 
 ## Installation
 
 ```bash
-npm install zlient zod
+npm install zlient
 # or
-bun add zlient zod
+bun add zlient
 ```
 
-> **Note**: `zod` is a peer dependency. You must install it alongside `zlient`.
+Then install your preferred validation library:
+
+```bash
+# Pick one (or more!)
+npm install zod       # Zod
+npm install valibot   # Valibot  
+npm install arktype   # ArkType
+```
 
 ---
 
@@ -48,15 +56,16 @@ const client = new HttpClient({
 
 ### 2. Define Endpoint
 
-Use `createEndpoint` to build a type-safe definition. No classes required.
+Use `createEndpoint` with your favorite schema library:
 
+<!-- tabs:start -->
+#### **Zod**
 ```typescript
 import { z } from 'zod';
 
 const getUser = client.createEndpoint({
   method: 'GET',
   path: (params) => `/users/${params.id}`,
-  // Strict schemas for all inputs
   pathParams: z.object({ id: z.string() }),
   response: z.object({
     id: z.string(),
@@ -65,6 +74,39 @@ const getUser = client.createEndpoint({
   }),
 });
 ```
+
+#### **Valibot**
+```typescript
+import * as v from 'valibot';
+
+const getUser = client.createEndpoint({
+  method: 'GET',
+  path: (params) => `/users/${params.id}`,
+  pathParams: v.object({ id: v.string() }),
+  response: v.object({
+    id: v.string(),
+    name: v.string(),
+    email: v.pipe(v.string(), v.email()),
+  }),
+});
+```
+
+#### **ArkType**
+```typescript
+import { type } from 'arktype';
+
+const getUser = client.createEndpoint({
+  method: 'GET',
+  path: (params) => `/users/${params.id}`,
+  pathParams: type({ id: 'string' }),
+  response: type({
+    id: 'string',
+    name: 'string',
+    email: 'string.email',
+  }),
+});
+```
+<!-- tabs:end -->
 
 ### 3. Call It
 
@@ -104,6 +146,8 @@ client.setAuth(new ApiKeyAuth({ header: 'X-API-KEY', value: 'secret' }));
 Handle different responses for different status codes.
 
 ```typescript
+import { z } from 'zod';
+
 const createPost = client.createEndpoint({
   method: 'POST',
   path: '/posts',
@@ -118,39 +162,45 @@ const result = await createPost({ data: { title: 'Hello' } });
 // `result` type is the union of the 201 and 400 schemas
 ```
 
-### FormData Support
+### Error Handling
 
-Upload files and send multipart form data seamlessly. Zlient automatically detects `FormData`, `Blob`, and `ArrayBuffer` bodies and handles them correctly.
+Validation errors are thrown as `ApiError` with detailed issues:
 
 ```typescript
-// File upload with FormData
+import { ApiError } from 'zlient';
+
+try {
+  await getUser({ pathParams: { id: '123' } });
+} catch (error) {
+  if (error instanceof ApiError && error.validationIssues) {
+    // Handle validation error
+    console.log(error.validationIssues);
+    // [{ message: 'Expected string, got number', path: ['id'] }]
+  }
+}
+```
+
+### FormData Support
+
+Upload files and send multipart form data seamlessly.
+
+```typescript
+import { z } from 'zod';
+
 const uploadFile = client.createEndpoint({
   method: 'POST',
   path: '/upload',
   response: z.object({ fileId: z.string(), url: z.string() }),
   advanced: {
-    skipRequestValidation: true, // FormData can't be validated with Zod
+    skipRequestValidation: true, // FormData can't be validated
   },
 });
 
 const formData = new FormData();
 formData.append('file', fileBlob, 'document.pdf');
-formData.append('description', 'My document');
 
 const result = await uploadFile({ data: formData });
-console.log(result.url);
 ```
-
-You can also use the low-level `request` method directly:
-
-```typescript
-const formData = new FormData();
-formData.append('avatar', imageFile);
-
-const { data } = await client.post('/users/avatar', formData);
-```
-
-> **Note**: When using `FormData`, the `Content-Type` header is automatically removed so the browser can set it with the proper multipart boundary.
 
 ### Metrics & Logging
 
@@ -165,6 +215,26 @@ const client = new HttpClient({
   metrics: new InMemoryMetricsCollector(),
 });
 ```
+
+---
+
+## Migration from v2
+
+v3 introduces Standard Schema support. Key changes:
+
+```diff
+- import { z } from 'zod'; // Required peer dependency
++ // Use any Standard Schema library (Zod, Valibot, ArkType)
+
+- catch (e) { if (e instanceof ZodError) { ... } }
++ catch (e) { if (e instanceof ApiError && e.validationIssues) { ... } }
+```
+
+---
+
+## Documentation
+
+📖 [Full Documentation](https://zlient.dev)
 
 ---
 
