@@ -1,6 +1,6 @@
 # Functional API
 
-Zlient v2 introduces a purely functional way to define endpoints. This removes the boilerplate of class inheritance and strict class hierarchies.
+Zlient provides a purely functional way to define endpoints. This removes the boilerplate of class inheritance and strict class hierarchies.
 
 ## 1. The `createEndpoint` Method
 
@@ -18,7 +18,10 @@ const endpoint = client.createEndpoint({
 
 You can define dynamic paths using a function. The function receives the inferred type of your `pathParams` schema.
 
-```typescript
+::: code-group
+```typescript [Zod]
+import { z } from 'zod';
+
 const getUser = client.createEndpoint({
   method: 'GET',
   // `params` is fully typed as { id: string }
@@ -30,17 +33,41 @@ const getUser = client.createEndpoint({
   })
 });
 ```
+```typescript [Valibot]
+import * as v from 'valibot';
+
+const getUser = client.createEndpoint({
+  method: 'GET',
+  path: (params) => `/users/${params.id}`,
+  pathParams: v.object({
+    id: v.string()
+  })
+});
+```
+```typescript [ArkType]
+import { type } from 'arktype';
+
+const getUser = client.createEndpoint({
+  method: 'GET',
+  path: (params) => `/users/${params.id}`,
+  pathParams: type({ id: 'string' })
+});
+```
+:::
 
 ## 3. Strict Schemas
 
-You can validate every part of the request lifecycle:
+You can validate every part of the request lifecycle with **any Standard Schema-compatible library**:
 
 - `request`: The JSON body (for POST/PUT).
 - `query`: The URL search parameters.
 - `pathParams`: The dynamic path segments.
 - `response`: The expected JSON response from the server.
 
-```typescript
+::: code-group
+```typescript [Zod]
+import { z } from 'zod';
+
 // 1. GET with Query Params & Response Map
 const searchUsers = client.createEndpoint({
   method: 'GET',
@@ -63,37 +90,90 @@ const searchUsers = client.createEndpoint({
 const createUser = client.createEndpoint({
   method: 'POST',
   path: '/users',
-  
-  // Validate request body
   request: z.object({
     name: z.string().min(2),
     email: z.string().email(),
     role: z.enum(['admin', 'user'])
   }),
-  
-  // Validate response body
   response: z.object({
     id: z.string(),
     createdAt: z.string().datetime()
   })
 });
+```
+```typescript [Valibot]
+import * as v from 'valibot';
 
-// 3. GET with Path Params
-const getUser = client.createEndpoint({
+// 1. GET with Query Params & Response Map
+const searchUsers = client.createEndpoint({
   method: 'GET',
-  // Type-safe path construction
-  path: ({ id }) => `/users/${id}`,
+  path: '/users/search',
   
-  pathParams: z.object({
-    id: z.string().uuid()
+  query: v.object({
+    q: v.string(),
+    page: v.optional(v.number(), 1)
   }),
   
-  response: z.object({
-    id: z.string(),
-    name: z.string()
+  response: {
+    200: v.object({
+      results: v.array(v.object({ id: v.string(), name: v.string() })),
+      total: v.number()
+    })
+  }
+});
+
+// 2. POST with Request Body
+const createUser = client.createEndpoint({
+  method: 'POST',
+  path: '/users',
+  request: v.object({
+    name: v.pipe(v.string(), v.minLength(2)),
+    email: v.pipe(v.string(), v.email()),
+    role: v.picklist(['admin', 'user'])
+  }),
+  response: v.object({
+    id: v.string(),
+    createdAt: v.pipe(v.string(), v.isoDateTime())
   })
 });
 ```
+```typescript [ArkType]
+import { type } from 'arktype';
+
+// 1. GET with Query Params & Response Map
+const searchUsers = client.createEndpoint({
+  method: 'GET',
+  path: '/users/search',
+  
+  query: type({
+    q: 'string',
+    'page?': 'number'
+  }),
+  
+  response: {
+    200: type({
+      results: [{ id: 'string', name: 'string' }],
+      total: 'number'
+    })
+  }
+});
+
+// 2. POST with Request Body
+const createUser = client.createEndpoint({
+  method: 'POST',
+  path: '/users',
+  request: type({
+    name: 'string>=2',
+    email: 'string.email',
+    role: '"admin" | "user"'
+  }),
+  response: type({
+    id: 'string',
+    createdAt: 'string'
+  })
+});
+```
+:::
 
 ## 4. Execution
 

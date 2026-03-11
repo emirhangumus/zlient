@@ -5,6 +5,5 @@ export * from './http/http-client';
 export * from './logger';
 export * from './metrics';
 export * from './types';
+export * from './validation';
 
-// Common schemas
-export * from './schemas/common';

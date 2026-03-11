@@ -17,11 +17,14 @@ Axios is the industry standard, but:
 -   Its types are often `any` or require manual generic passing (e.g., `axios.get<User>(...)`).
 -   **It trusts the server blindly.** If the server returns data that doesn't match your TypeScript interface, your app crashes at runtime with cryptic errors.
 
+### 3. Other clients lock you into one validator
+Many typed HTTP clients force you to use a specific validation library (usually Zod). This creates vendor lock-in and prevents you from using your preferred tools.
+
 ## The Zlient Solution
 
-Zlient takes a different approach: **Runtime Validation is not optional.**
+Zlient takes a different approach: **Runtime Validation is not optional, but your validator choice is.**
 
-By forcing you to define a [Zod](https://zod.dev) schema for every endpoint, Zlient guarantees that **if your code runs, your data is correct.**
+Zlient v3 supports [Standard Schema](https://standardschema.dev) — an industry-standard interface implemented by **Zod**, **Valibot**, **ArkType**, and more. Use whichever validation library you prefer!
 
 ### Comparison
 
@@ -37,18 +40,38 @@ const { data } = await axios.get<User>('/users/1');
 console.log(data.id.toLowerCase());
 ```
 
-#### Zlient Way
-```typescript
+#### Zlient Way (with any validator!)
+::: code-group
+```typescript [Zod]
+import { z } from 'zod';
+
 const getUser = client.createEndpoint({
   method: 'GET',
   path: '/users/1',
-  // ✅ Runtime Safety: Zod validates the response before you see it
-  response: z.object({ 
-    id: z.string(), // Must be a string
-    name: z.string() 
-  })
+  response: z.object({ id: z.string(), name: z.string() })
 });
+```
+```typescript [Valibot]
+import * as v from 'valibot';
 
+const getUser = client.createEndpoint({
+  method: 'GET',
+  path: '/users/1',
+  response: v.object({ id: v.string(), name: v.string() })
+});
+```
+```typescript [ArkType]
+import { type } from 'arktype';
+
+const getUser = client.createEndpoint({
+  method: 'GET',
+  path: '/users/1',
+  response: type({ id: 'string', name: 'string' })
+});
+```
+:::
+
+```typescript
 // data is strictly typed as { id: string; name: string }
 const data = await getUser({});
 
@@ -62,3 +85,4 @@ console.log(data.id.toLowerCase());
 2.  **Zero Boilerplate**: No more `if (!res.ok) throw new Error(...)`.
 3.  **Standardized**: Built-in logic for Retries, Timeouts, and Auth means every network call in your app behaves consistently.
 4.  **Small**: Built on top of `fetch`, so it's lightweight.
+5.  **No Vendor Lock-in**: Use Zod, Valibot, ArkType, or any future Standard Schema library. Switch anytime without changing your endpoint definitions.

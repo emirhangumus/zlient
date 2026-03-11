@@ -14,8 +14,9 @@ try {
 } catch (err) {
   if (err instanceof ApiError) {
     if (err.isValidationError()) {
-      // Zod validation failed on request or response
-      console.log(err.zodError.issues);
+      // Validation failed (works with Zod, Valibot, ArkType, etc.)
+      console.log(err.validationIssues);
+      // [{ message: 'Expected string, received number', path: ['id'] }]
     } else if (err.isClientError()) {
       // 4xx error (e.g. 404, 400)
     } else if (err.isServerError()) {
@@ -31,6 +32,16 @@ try {
 ## Validation Errors
 
 If your response schema doesn't match what the server returned, Zlient throws immediately. This "Fail Fast" approach prevents corrupted data from flowing into your application logic.
+
+Standard Schema Issues
+Validation issues follow the [Standard Schema](https://standardschema.dev) format, regardless of which validation library you use:
+
+```typescript
+interface Issue {
+  message: string;
+  path?: (string | number | symbol)[];
+}
+```
 
 ## Retry Strategy
 

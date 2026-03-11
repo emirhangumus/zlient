@@ -1,17 +1,22 @@
-import { z } from 'zod';
 import { HttpClient } from '../http/http-client';
-import { HTTPMethod, SchemaDefinitionError } from '../types';
-import { parseOrThrow } from '../validation';
+import {
+    HTTPMethod,
+    ResponseSchema,
+    SchemaDefinitionError,
+    SchemaMap,
+    StandardSchemaV1,
+} from '../types';
+import { isStandardSchema, parseOrThrow } from '../validation';
 
 export type EndpointConfig<
-  ResSchema extends z.ZodType | Record<number, z.ZodType>,
-  ReqSchema extends z.ZodType | undefined = undefined,
-  QuerySchema extends z.ZodType | undefined = undefined,
-  PathSchema extends z.ZodType | undefined = undefined,
+  ResSchema extends ResponseSchema,
+  ReqSchema extends StandardSchemaV1 | undefined = undefined,
+  QuerySchema extends StandardSchemaV1 | undefined = undefined,
+  PathSchema extends StandardSchemaV1 | undefined = undefined,
   MustHeaderKeys extends readonly string[] = readonly [],
 > = {
   method: keyof typeof HTTPMethod;
-  path: string | ((params: z.infer<Exclude<PathSchema, undefined>>) => string);
+  path: string | ((params: StandardSchemaV1.InferOutput<Exclude<PathSchema, undefined>>) => string);
   response: ResSchema;
   request?: ReqSchema;
   query?: QuerySchema;
@@ -33,47 +38,49 @@ type RequiredHeaders<Keys extends readonly string[]> = Keys extends readonly []
   : { [K in Keys[number]]: string } & Record<string, string>;
 
 export type EndpointCallParams<
-  ReqSchema extends z.ZodType | undefined,
-  QuerySchema extends z.ZodType | undefined,
-  PathSchema extends z.ZodType | undefined,
+  ReqSchema extends StandardSchemaV1 | undefined,
+  QuerySchema extends StandardSchemaV1 | undefined,
+  PathSchema extends StandardSchemaV1 | undefined,
   MustHeaderKeys extends readonly string[] = readonly [],
 > = {
-  data?: ReqSchema extends z.ZodType ? z.infer<ReqSchema> : never;
-  query?: QuerySchema extends z.ZodType ? z.infer<QuerySchema> : never;
-  pathParams?: PathSchema extends z.ZodType ? z.infer<PathSchema> : never;
+  data?: ReqSchema extends StandardSchemaV1 ? StandardSchemaV1.InferInput<ReqSchema> : never;
+  query?: QuerySchema extends StandardSchemaV1 ? StandardSchemaV1.InferInput<QuerySchema> : never;
+  pathParams?: PathSchema extends StandardSchemaV1
+    ? StandardSchemaV1.InferInput<PathSchema>
+    : never;
   signal?: globalThis.AbortSignal;
 } & (MustHeaderKeys extends readonly []
   ? { headers?: Record<string, string> }
   : { headers: RequiredHeaders<MustHeaderKeys> });
 
-// Helper to extract the response type from a schema which might be a single ZodType or a status map
-type InferResponse<S> = S extends z.ZodType
-  ? z.infer<S>
-  : S extends Record<number, z.ZodType>
-  ? z.infer<S[keyof S]>
-  : never;
+// Helper to extract the response type from a schema which might be a single schema or a status map
+type InferResponse<S> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<S>
+  : S extends SchemaMap
+    ? { [K in keyof S]: S[K] extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<S[K]> : never }[keyof S]
+    : never;
 
 export type EndpointCall<
-  ResSchema extends z.ZodType | Record<number, z.ZodType>,
-  ReqSchema extends z.ZodType | undefined,
-  QuerySchema extends z.ZodType | undefined,
-  PathSchema extends z.ZodType | undefined,
+  ResSchema extends ResponseSchema,
+  ReqSchema extends StandardSchemaV1 | undefined,
+  QuerySchema extends StandardSchemaV1 | undefined,
+  PathSchema extends StandardSchemaV1 | undefined,
   MustHeaderKeys extends readonly string[] = readonly [],
 > = (
   params: EndpointCallParams<ReqSchema, QuerySchema, PathSchema, MustHeaderKeys>
 ) => Promise<InferResponse<ResSchema>>;
 
 export class EndpointImpl<
-  ResSchema extends z.ZodType | Record<number, z.ZodType>,
-  ReqSchema extends z.ZodType | undefined,
-  QuerySchema extends z.ZodType | undefined,
-  PathSchema extends z.ZodType | undefined,
+  ResSchema extends ResponseSchema,
+  ReqSchema extends StandardSchemaV1 | undefined,
+  QuerySchema extends StandardSchemaV1 | undefined,
+  PathSchema extends StandardSchemaV1 | undefined,
   MustHeaderKeys extends readonly string[] = readonly [],
 > {
   constructor(
     private client: HttpClient,
     private config: EndpointConfig<ResSchema, ReqSchema, QuerySchema, PathSchema, MustHeaderKeys>
-  ) { }
+  ) {}
 
   async call(
     params: EndpointCallParams<ReqSchema, QuerySchema, PathSchema, MustHeaderKeys>
@@ -90,28 +97,23 @@ export class EndpointImpl<
         (key) => !headers || !(key in headers)
       );
       if (missingHeaders.length > 0) {
-        throw new Error(
-          `Missing required header(s): ${missingHeaders.join(', ')}`
-        );
+        throw new Error(`Missing required header(s): ${missingHeaders.join(', ')}`);
       }
     }
 
-    // Validate Request Body
+    // Validate Request Body using Standard Schema
     if (!skipRequestValidation && this.config.request && data !== undefined) {
-      const parsed = this.config.request.safeParse(data);
-      if (!parsed.success) throw parsed.error;
+      await parseOrThrow(this.config.request, data);
     }
 
-    // Validate Query Params
+    // Validate Query Params using Standard Schema
     if (!skipRequestValidation && this.config.query && query !== undefined) {
-      const parsed = this.config.query.safeParse(query);
-      if (!parsed.success) throw parsed.error;
+      await parseOrThrow(this.config.query, query);
     }
 
-    // Validate Path Params
+    // Validate Path Params using Standard Schema
     if (!skipRequestValidation && this.config.pathParams && pathParams !== undefined) {
-      const parsed = this.config.pathParams.safeParse(pathParams);
-      if (!parsed.success) throw parsed.error;
+      await parseOrThrow(this.config.pathParams, pathParams);
     }
 
     // Check for missing required params
@@ -153,18 +155,19 @@ export class EndpointImpl<
       return responseData as InferResponse<ResSchema>;
     }
 
-    if (schema instanceof z.ZodType) {
+    if (isStandardSchema(schema)) {
       // Single schema for all success codes
-      return parseOrThrow(schema, responseData) as InferResponse<ResSchema>;
+      return (await parseOrThrow(schema, responseData)) as InferResponse<ResSchema>;
     }
 
-    // Map of status codes
-    const specificSchema = (schema as Record<number, z.ZodType>)[status];
+    // Map of status codes to schemas
+    const schemaMap = schema as SchemaMap;
+    const specificSchema = schemaMap[status];
     if (!specificSchema) {
-      // Fallback or error? For now, rigorous error.
+      // No schema defined for this status code
       throw new SchemaDefinitionError(status);
     }
 
-    return parseOrThrow(specificSchema, responseData) as InferResponse<ResSchema>;
+    return (await parseOrThrow(specificSchema, responseData)) as InferResponse<ResSchema>;
   }
 }

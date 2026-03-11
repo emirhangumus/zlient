@@ -1,21 +1,22 @@
-import { z } from 'zod';
 import type { AuthProvider } from '../auth';
 import { NoAuth } from '../auth';
 import { EndpointCall, EndpointConfig, EndpointImpl } from '../endpoint/base-endpoint';
 import { LoggerUtil, NoOpLogger } from '../logger';
 import { MetricsCollector, NoOpMetricsCollector } from '../metrics';
 import {
-  ApiError,
-  ClientOptions,
-  FetchLike,
-  HTTPMethod,
-  HTTPStatusCode,
-  HTTPStatusCodeKey,
-  HTTPStatusCodeNumber,
-  Interceptors,
-  RequestOptions,
-  RetryStrategy,
-  toQueryString,
+    ApiError,
+    ClientOptions,
+    FetchLike,
+    HTTPMethod,
+    HTTPStatusCode,
+    HTTPStatusCodeKey,
+    HTTPStatusCodeNumber,
+    Interceptors,
+    RequestOptions,
+    ResponseSchema,
+    RetryStrategy,
+    StandardSchemaV1,
+    toQueryString,
 } from '../types';
 
 /**
@@ -478,15 +479,37 @@ export class HttpClient {
 
   /**
    * Create a strongly-typed endpoint builder.
+   * Works with any Standard Schema-compatible library (Zod, Valibot, ArkType, etc.)
    *
-   * @param config - Endpoint configuration
-   * @returns Endpoint instance
+   * @param config - Endpoint configuration with schemas
+   * @returns Endpoint call function
+   *
+   * @example
+   * ```ts
+   * // With Zod
+   * import { z } from 'zod';
+   * const getUser = client.createEndpoint({
+   *   method: 'GET',
+   *   path: '/users/:id',
+   *   response: z.object({ id: z.string(), name: z.string() }),
+   *   pathParams: z.object({ id: z.string() }),
+   * });
+   *
+   * // With Valibot
+   * import * as v from 'valibot';
+   * const getUser = client.createEndpoint({
+   *   method: 'GET',
+   *   path: '/users/:id',
+   *   response: v.object({ id: v.string(), name: v.string() }),
+   *   pathParams: v.object({ id: v.string() }),
+   * });
+   * ```
    */
   createEndpoint<
-    ResSchema extends z.ZodType | Record<number, z.ZodType>,
-    ReqSchema extends z.ZodType | undefined = undefined,
-    QuerySchema extends z.ZodType | undefined = undefined,
-    PathSchema extends z.ZodType | undefined = undefined,
+    ResSchema extends ResponseSchema,
+    ReqSchema extends StandardSchemaV1 | undefined = undefined,
+    QuerySchema extends StandardSchemaV1 | undefined = undefined,
+    PathSchema extends StandardSchemaV1 | undefined = undefined,
     MustHeaderKeys extends readonly string[] = readonly [],
   >(
     config: EndpointConfig<ResSchema, ReqSchema, QuerySchema, PathSchema, MustHeaderKeys>

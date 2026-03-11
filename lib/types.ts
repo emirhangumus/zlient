@@ -1,7 +1,80 @@
-import { z, ZodError } from 'zod';
 import { AuthProvider } from './auth';
 import { Logger } from './logger';
 import { MetricsCollector } from './metrics';
+
+// ========================
+// Standard Schema v1 Types
+// ========================
+
+/** The Standard Schema interface for validation libraries (Zod, Valibot, ArkType, etc.) */
+export interface StandardSchemaV1<Input = unknown, Output = Input> {
+  readonly '~standard': StandardSchemaV1.Props<Input, Output>;
+}
+
+export declare namespace StandardSchemaV1 {
+  /** The Standard Schema properties interface. */
+  export interface Props<Input = unknown, Output = Input> {
+    readonly version: 1;
+    readonly vendor: string;
+    readonly validate: (
+      value: unknown
+    ) => Result<Output> | Promise<Result<Output>>;
+    readonly types?: Types<Input, Output> | undefined;
+  }
+
+  /** The result interface of the validate function. */
+  export type Result<Output> = SuccessResult<Output> | FailureResult;
+
+  /** The result interface if validation succeeds. */
+  export interface SuccessResult<Output> {
+    readonly value: Output;
+    readonly issues?: undefined;
+  }
+
+  /** The result interface if validation fails. */
+  export interface FailureResult {
+    readonly issues: ReadonlyArray<Issue>;
+  }
+
+  /** The issue interface of the failure output. */
+  export interface Issue {
+    readonly message: string;
+    readonly path?: ReadonlyArray<PropertyKey | PathSegment> | undefined;
+  }
+
+  /** The path segment interface of the issue. */
+  export interface PathSegment {
+    readonly key: PropertyKey;
+  }
+
+  /** The Standard types interface. */
+  export interface Types<Input = unknown, Output = Input> {
+    readonly input: Input;
+    readonly output: Output;
+  }
+
+  /** Infers the input type of a Standard Schema. */
+  export type InferInput<Schema extends StandardSchemaV1> = NonNullable<
+    Schema['~standard']['types']
+  >['input'];
+
+  /** Infers the output type of a Standard Schema. */
+  export type InferOutput<Schema extends StandardSchemaV1> = NonNullable<
+    Schema['~standard']['types']
+  >['output'];
+}
+
+/** Infers the input type of a Standard Schema. */
+export type InferInput<Schema extends StandardSchemaV1> = StandardSchemaV1.InferInput<Schema>;
+
+/** Infers the output type of a Standard Schema. */
+export type InferOutput<Schema extends StandardSchemaV1> = StandardSchemaV1.InferOutput<Schema>;
+
+/** A schema map where keys are HTTP status codes and values are Standard Schema validators. */
+export type SchemaMap = Record<number, StandardSchemaV1>;
+
+/** A Standard Schema or a map of status codes to schemas. */
+export type ResponseSchema = StandardSchemaV1 | SchemaMap;
 
 export type Dictionary<T> = Record<string, T>;
 
@@ -210,7 +283,10 @@ export interface ClientOptions {
   onUnauthenticated?: (response: Response) => Promise<boolean> | boolean;
 }
 
-export type SafeParseResult<T> = { success: true; data: T } | { success: false; error: ZodError };
+/** Result of a safe parse operation using Standard Schema. */
+export type SafeParseResult<T> =
+  | { success: true; data: T }
+  | { success: false; issues: ReadonlyArray<StandardSchemaV1.Issue> };
 
 /**
  * Custom error class for API-related errors.
@@ -227,18 +303,24 @@ export type SafeParseResult<T> = { success: true; data: T } | { success: false; 
 export class ApiError extends Error {
   public status?: number;
   public details?: unknown;
-  public zodError?: ZodError;
+  /** Validation issues from Standard Schema-compatible libraries (Zod, Valibot, ArkType, etc.) */
+  public validationIssues?: ReadonlyArray<StandardSchemaV1.Issue>;
 
   constructor(
     message: string,
-    options?: { status?: number; cause?: unknown; details?: unknown; zodError?: ZodError }
+    options?: {
+      status?: number;
+      cause?: unknown;
+      details?: unknown;
+      validationIssues?: ReadonlyArray<StandardSchemaV1.Issue>;
+    }
   ) {
     super(message);
     this.name = 'ApiError';
     this.status = options?.status;
     this.details = options?.details;
     this.cause = options?.cause;
-    this.zodError = options?.zodError;
+    this.validationIssues = options?.validationIssues;
 
     // Maintains proper stack trace for where error was thrown
     if (Error.captureStackTrace) {
@@ -247,10 +329,10 @@ export class ApiError extends Error {
   }
 
   /**
-   * Check if this is a validation error (has zodError)
+   * Check if this is a validation error (has validationIssues)
    */
   isValidationError(): boolean {
-    return !!this.zodError;
+    return !!this.validationIssues && this.validationIssues.length > 0;
   }
 
   /**
@@ -276,7 +358,7 @@ export class ApiError extends Error {
       message: this.message,
       status: this.status,
       details: this.details,
-      zodError: this.zodError?.issues,
+      validationIssues: this.validationIssues,
       stack: this.stack,
     };
   }
@@ -298,22 +380,13 @@ export class SchemaDefinitionError extends Error {
   }
 }
 
+/** Generic paginated response type. */
 export type Paginated<T> = {
   items: T[];
   total: number;
   page: number;
   pageSize: number;
 };
-
-/**
- * Schema for paginated responses
- */
-export const PaginationSchema = z.object({
-  items: z.array(z.unknown()),
-  total: z.number().int().nonnegative(),
-  page: z.number().int().nonnegative(),
-  pageSize: z.number().int().positive(),
-});
 
 /**
  * Options that can be passed to individual requests to override defaults.

@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "Zlient"
   text: "Type-Safe HTTP Client"
-  tagline: "Build robust API integrations with Zod validation, functional endpoints, and zero boilerplate."
+  tagline: "Build robust API integrations with any validation library. Supports Zod, Valibot, ArkType, and more via Standard Schema."
   actions:
     - theme: brand
       text: Get Started
@@ -20,7 +20,10 @@ features:
   - title: Type-Safe
     details: Full TypeScript inference for request bodies, path params, and responses.
     icon: 🔒
-  - title: Zod Powered
-    details: Runtime validation for every input and output. Fail fast, fail safe.
+  - title: Standard Schema
+    details: Use Zod, Valibot, ArkType, or any Standard Schema-compatible library. Your choice.
     icon: ✅
+  - title: Bring Your Own Validator
+    details: No vendor lock-in. Switch validation libraries without changing your endpoints.
+    icon: 🔄
 ---

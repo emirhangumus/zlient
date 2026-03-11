@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { z } from 'zod';
 import { HttpClient } from '../lib/http/http-client';
-import { HTTPStatusCode } from '../lib/types';
+import { ApiError, HTTPStatusCode } from '../lib/types';
 
 // Mock fetch globally
 const mockFetch = mock((request: Request) => {
@@ -74,13 +74,15 @@ describe('Zlient', () => {
             // Valid call
             await createUser({ data: { name: 'New User' } });
 
-            // Invalid call (should throw Zod error)
-            // We manually check validation logic
+            // Invalid call (should throw ApiError with validation issues)
             try {
                 await createUser({ data: { name: 123 as any } });
                 expect(true).toBe(false); // Should fail if no error thrown
             } catch (e) {
-                expect(e).toBeInstanceOf(z.ZodError);
+                expect(e).toBeInstanceOf(ApiError);
+                expect((e as ApiError).isValidationError()).toBe(true);
+                expect((e as ApiError).validationIssues).toBeDefined();
+                expect((e as ApiError).validationIssues!.length).toBeGreaterThan(0);
             }
         });
 
