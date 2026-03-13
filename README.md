@@ -251,7 +251,7 @@ v3 introduces Standard Schema support. Key changes:
 
 ## Documentation
 
-📖 [Full Documentation](https://zlient.dev)
+📖 [Full Documentation](https://emirhangumus.github.io/zlient/)
 
 ---
 
