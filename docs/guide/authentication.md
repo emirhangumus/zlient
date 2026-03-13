@@ -28,15 +28,15 @@ Use `ApiKeyAuth` for static keys, either in headers or query params.
 import { ApiKeyAuth } from 'zlient';
 
 // Header: x-api-key: secret
-const headerAuth = new ApiKeyAuth({ 
-  header: 'x-api-key', 
-  value: 'secret' 
+const headerAuth = new ApiKeyAuth({
+  header: 'x-api-key',
+  value: 'secret',
 });
 
 // Query: ?api_key=secret
-const queryAuth = new ApiKeyAuth({ 
-  query: 'api_key', 
-  value: 'secret' 
+const queryAuth = new ApiKeyAuth({
+  query: 'api_key',
+  value: 'secret',
 });
 ```
 
@@ -52,12 +52,12 @@ class MyCustomAuth implements AuthProvider {
     // Modify headers directly
     const timestamp = Date.now().toString();
     const signature = await signRequest(init, timestamp);
-    
-    // Zlient guarantees init.headers interacts safely, 
+
+    // Zlient guarantees init.headers interacts safely,
     // but for complex logic, you might want to normalize it first.
     if (!init.headers) init.headers = {};
-    
-    // cast to record if you know it's safe, 
+
+    // cast to record if you know it's safe,
     // OR use the safe handling shown in the migration guide.
     (init.headers as any)['X-Signature'] = signature;
   }

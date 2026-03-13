@@ -50,7 +50,7 @@ const client = new HttpClient({
   baseUrls: {
     default: 'https://api.example.com',
   },
-  retry: { maxRetries: 3 },
+  retry: { maxAttempts: 3, baseDelayMs: 1000 },
 });
 ```
 
@@ -124,6 +124,23 @@ console.log(user.name);
 ---
 
 ## Advanced Usage
+
+### Retry Configuration
+
+Zlient automatically retries failed requests with exponential backoff. Customize the retry behavior:
+
+```typescript
+const client = new HttpClient({
+  baseUrls: { default: 'https://api.example.com' },
+  retry: {
+    maxAttempts: 3,           // Total attempts (including initial request)
+    baseDelayMs: 1000,        // Base delay for exponential backoff
+    retryMethods: ['GET', 'POST', 'PUT'],     // Methods to retry
+    retryStatusCodes: [500, 502, 503, 504],   // Status codes to retry
+    respectRetryAfter: true,  // Honor Retry-After header
+  },
+});
+```
 
 ### Authentication
 

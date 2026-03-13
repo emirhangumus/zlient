@@ -1,23 +1,28 @@
 # Why Zlient?
 
-You might be wondering: *"Why do I need another HTTP client? What's wrong with `fetch` or `axios`?"*
+You might be wondering: _"Why do I need another HTTP client? What's wrong with `fetch` or `axios`?"_
 
 ## The Problem
 
 ### 1. `fetch` is too low-level
+
 `fetch` is great, but it requires boilerplate for everything:
--   Checking `res.ok`.
--   Parsing JSON manually.
--   Handling timeouts.
--   Constructing query strings.
+
+- Checking `res.ok`.
+- Parsing JSON manually.
+- Handling timeouts.
+- Constructing query strings.
 
 ### 2. `axios` is huge and loosely typed
+
 Axios is the industry standard, but:
--   It adds significant bundle size.
--   Its types are often `any` or require manual generic passing (e.g., `axios.get<User>(...)`).
--   **It trusts the server blindly.** If the server returns data that doesn't match your TypeScript interface, your app crashes at runtime with cryptic errors.
+
+- It adds significant bundle size.
+- Its types are often `any` or require manual generic passing (e.g., `axios.get<User>(...)`).
+- **It trusts the server blindly.** If the server returns data that doesn't match your TypeScript interface, your app crashes at runtime with cryptic errors.
 
 ### 3. Other clients lock you into one validator
+
 Many typed HTTP clients force you to use a specific validation library (usually Zod). This creates vendor lock-in and prevents you from using your preferred tools.
 
 ## The Zlient Solution
@@ -29,8 +34,12 @@ Zlient v3 supports [Standard Schema](https://standardschema.dev) — an industry
 ### Comparison
 
 #### Traditional (`axios`)
+
 ```typescript
-interface User { id: string; name: string; }
+interface User {
+  id: string;
+  name: string;
+}
 
 // ⚠️ Runtime Risk: API might return { id: 123 } (number)
 // TypeScript won't catch this. Use defaults to "any" internally.
@@ -41,34 +50,39 @@ console.log(data.id.toLowerCase());
 ```
 
 #### Zlient Way (with any validator!)
+
 ::: code-group
+
 ```typescript [Zod]
 import { z } from 'zod';
 
 const getUser = client.createEndpoint({
   method: 'GET',
   path: '/users/1',
-  response: z.object({ id: z.string(), name: z.string() })
+  response: z.object({ id: z.string(), name: z.string() }),
 });
 ```
+
 ```typescript [Valibot]
 import * as v from 'valibot';
 
 const getUser = client.createEndpoint({
   method: 'GET',
   path: '/users/1',
-  response: v.object({ id: v.string(), name: v.string() })
+  response: v.object({ id: v.string(), name: v.string() }),
 });
 ```
+
 ```typescript [ArkType]
 import { type } from 'arktype';
 
 const getUser = client.createEndpoint({
   method: 'GET',
   path: '/users/1',
-  response: type({ id: 'string', name: 'string' })
+  response: type({ id: 'string', name: 'string' }),
 });
 ```
+
 :::
 
 ```typescript

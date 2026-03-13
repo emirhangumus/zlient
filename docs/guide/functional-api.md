@@ -19,6 +19,7 @@ const endpoint = client.createEndpoint({
 You can define dynamic paths using a function. The function receives the inferred type of your `pathParams` schema.
 
 ::: code-group
+
 ```typescript [Zod]
 import { z } from 'zod';
 
@@ -26,13 +27,14 @@ const getUser = client.createEndpoint({
   method: 'GET',
   // `params` is fully typed as { id: string }
   path: (params) => `/users/${params.id}`,
-  
+
   // This schema drives the type of `params` above
   pathParams: z.object({
-    id: z.string()
-  })
+    id: z.string(),
+  }),
 });
 ```
+
 ```typescript [Valibot]
 import * as v from 'valibot';
 
@@ -40,19 +42,21 @@ const getUser = client.createEndpoint({
   method: 'GET',
   path: (params) => `/users/${params.id}`,
   pathParams: v.object({
-    id: v.string()
-  })
+    id: v.string(),
+  }),
 });
 ```
+
 ```typescript [ArkType]
 import { type } from 'arktype';
 
 const getUser = client.createEndpoint({
   method: 'GET',
   path: (params) => `/users/${params.id}`,
-  pathParams: type({ id: 'string' })
+  pathParams: type({ id: 'string' }),
 });
 ```
+
 :::
 
 ## 3. Strict Schemas
@@ -65,6 +69,7 @@ You can validate every part of the request lifecycle with **any Standard Schema-
 - `response`: The expected JSON response from the server.
 
 ::: code-group
+
 ```typescript [Zod]
 import { z } from 'zod';
 
@@ -72,18 +77,18 @@ import { z } from 'zod';
 const searchUsers = client.createEndpoint({
   method: 'GET',
   path: '/users/search',
-  
+
   query: z.object({
     q: z.string(),
-    page: z.number().default(1)
+    page: z.number().default(1),
   }),
-  
+
   response: {
     200: z.object({
       results: z.array(z.object({ id: z.string(), name: z.string() })),
-      total: z.number()
-    })
-  }
+      total: z.number(),
+    }),
+  },
 });
 
 // 2. POST with Request Body
@@ -93,14 +98,15 @@ const createUser = client.createEndpoint({
   request: z.object({
     name: z.string().min(2),
     email: z.string().email(),
-    role: z.enum(['admin', 'user'])
+    role: z.enum(['admin', 'user']),
   }),
   response: z.object({
     id: z.string(),
-    createdAt: z.string().datetime()
-  })
+    createdAt: z.string().datetime(),
+  }),
 });
 ```
+
 ```typescript [Valibot]
 import * as v from 'valibot';
 
@@ -108,18 +114,18 @@ import * as v from 'valibot';
 const searchUsers = client.createEndpoint({
   method: 'GET',
   path: '/users/search',
-  
+
   query: v.object({
     q: v.string(),
-    page: v.optional(v.number(), 1)
+    page: v.optional(v.number(), 1),
   }),
-  
+
   response: {
     200: v.object({
       results: v.array(v.object({ id: v.string(), name: v.string() })),
-      total: v.number()
-    })
-  }
+      total: v.number(),
+    }),
+  },
 });
 
 // 2. POST with Request Body
@@ -129,14 +135,15 @@ const createUser = client.createEndpoint({
   request: v.object({
     name: v.pipe(v.string(), v.minLength(2)),
     email: v.pipe(v.string(), v.email()),
-    role: v.picklist(['admin', 'user'])
+    role: v.picklist(['admin', 'user']),
   }),
   response: v.object({
     id: v.string(),
-    createdAt: v.pipe(v.string(), v.isoDateTime())
-  })
+    createdAt: v.pipe(v.string(), v.isoDateTime()),
+  }),
 });
 ```
+
 ```typescript [ArkType]
 import { type } from 'arktype';
 
@@ -144,18 +151,18 @@ import { type } from 'arktype';
 const searchUsers = client.createEndpoint({
   method: 'GET',
   path: '/users/search',
-  
+
   query: type({
     q: 'string',
-    'page?': 'number'
+    'page?': 'number',
   }),
-  
+
   response: {
     200: type({
       results: [{ id: 'string', name: 'string' }],
-      total: 'number'
-    })
-  }
+      total: 'number',
+    }),
+  },
 });
 
 // 2. POST with Request Body
@@ -165,14 +172,15 @@ const createUser = client.createEndpoint({
   request: type({
     name: 'string>=2',
     email: 'string.email',
-    role: '"admin" | "user"'
+    role: '"admin" | "user"',
   }),
   response: type({
     id: 'string',
-    createdAt: 'string'
-  })
+    createdAt: 'string',
+  }),
 });
 ```
+
 :::
 
 ## 4. Execution
@@ -181,7 +189,7 @@ To execute an endpoint, call it directly as a function.
 
 ```typescript
 const result = await searchUsers({
-  query: { q: 'alice', page: 2 }
+  query: { q: 'alice', page: 2 },
 });
 
 // result.results is typed!
@@ -197,6 +205,6 @@ const controller = new AbortController();
 await searchUsers({
   query: { q: 'alice' },
   signal: controller.signal,
-  headers: { 'X-Custom': '123' }
+  headers: { 'X-Custom': '123' },
 });
 ```

@@ -37,7 +37,7 @@ export interface AuthProvider {
  * Use this when you don't need authentication.
  */
 export class NoAuth implements AuthProvider {
-  async apply() {
+  async apply(_req: AuthContext) {
     /* no-op */
   }
 }

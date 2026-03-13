@@ -2,9 +2,9 @@
 layout: home
 
 hero:
-  name: "Zlient"
-  text: "Type-Safe HTTP Client"
-  tagline: "Build robust API integrations with any validation library. Supports Zod, Valibot, ArkType, and more via Standard Schema."
+  name: 'Zlient'
+  text: 'Type-Safe HTTP Client'
+  tagline: 'Build robust API integrations with any validation library. Supports Zod, Valibot, ArkType, and more via Standard Schema.'
   actions:
     - theme: brand
       text: Get Started

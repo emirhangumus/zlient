@@ -11,11 +11,12 @@ import { ConsoleLogger, LogLevel } from 'zlient';
 
 const client = new HttpClient({
   // ...
-  logger: new ConsoleLogger(LogLevel.INFO)
+  logger: new ConsoleLogger(LogLevel.INFO),
 });
 ```
 
 ### Custom Logger
+
 Implement the `Logger` interface to send logs to Datadog, Sentry, or CloudWatch.
 
 ```typescript
@@ -39,7 +40,7 @@ import { InMemoryMetricsCollector } from 'zlient';
 const metrics = new InMemoryMetricsCollector();
 const client = new HttpClient({
   // ...
-  metrics
+  metrics,
 });
 
 // Later...
@@ -48,6 +49,7 @@ console.log(stats.avgDurationMs);
 ```
 
 ### Custom Collector
+
 Implement `MetricsCollector` to feed Prometheus or StatsD.
 
 ```typescript

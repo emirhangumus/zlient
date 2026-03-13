@@ -16,9 +16,7 @@ export declare namespace StandardSchemaV1 {
   export interface Props<Input = unknown, Output = Input> {
     readonly version: 1;
     readonly vendor: string;
-    readonly validate: (
-      value: unknown
-    ) => Result<Output> | Promise<Result<Output>>;
+    readonly validate: (value: unknown) => Result<Output> | Promise<Result<Output>>;
     readonly types?: Types<Input, Output> | undefined;
   }
 
@@ -104,16 +102,19 @@ export type BaseUrlMap = {
  * @example
  * ```ts
  * {
- *   maxRetries: 3,
+ *   maxAttempts: 3,
  *   baseDelayMs: 1000,
  *   jitter: 0.2,
- *   retryMethods: ['GET', 'HEAD', 'PUT']
+ *   retryMethods: ['GET', 'HEAD', 'PUT'],
+ *   retryStatusCodes: [500, 502, 503, 504],
+ *   retryNetworkErrors: true,
+ *   respectRetryAfter: true,
  * }
  * ```
  */
-export type RetryStrategy = {
+export type RetryPolicy = {
   /** Maximum number of retry attempts */
-  maxRetries: number;
+  maxAttempts: number;
   /** Base delay in milliseconds (will be exponentially increased) */
   baseDelayMs: number;
   /** Jitter factor 0..1 to randomize delays and prevent thundering herd */
@@ -121,9 +122,17 @@ export type RetryStrategy = {
   /** HTTP methods eligible for retry */
   retryMethods?: (keyof typeof HTTPMethod)[];
   /** HTTP status codes eligible for retry */
-  retryStatusCodes?: HTTPStatusCodeKey[];
+  retryStatusCodes?: HTTPStatusCodeNumber[];
+  /** Whether to respect 'Retry-After' header if present in the response */
+  respectRetryAfter?: boolean;
   /** Custom function to determine if a request should be retried */
-  shouldRetry?: (ctx: { attempt: number; error?: unknown; response?: Response }) => boolean;
+  shouldRetry?: (ctx: {
+    url: string;
+    method: HttpMethod;
+    status: HTTPStatusCodeNumber;
+    attempt: number;
+    response?: Response;
+  }) => Promise<boolean> | boolean;
 };
 
 export const HTTPMethod = {
@@ -251,7 +260,7 @@ export interface TimeoutOptions {
  * const options: ClientOptions = {
  *   baseUrls: { default: 'https://api.example.com' },
  *   headers: { 'X-API-Version': '1.0' },
- *   retry: { maxRetries: 3, baseDelayMs: 1000 },
+ *   retry: { maxAttempts: 3, baseDelayMs: 1000 },
  *   timeout: { requestTimeoutMs: 30000 }
  * }
  * ```
@@ -264,7 +273,7 @@ export interface ClientOptions {
   /** Default headers applied to all requests */
   headers?: Record<string, string>;
   /** Retry strategy configuration */
-  retry?: RetryStrategy;
+  retry?: RetryPolicy;
   /** Request/response interceptors */
   interceptors?: Interceptors;
   /** Timeout configuration */

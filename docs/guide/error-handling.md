@@ -22,7 +22,7 @@ try {
     } else if (err.isServerError()) {
       // 5xx error
     }
-    
+
     // Original status code
     console.log(err.status); // e.g. 404
   }
@@ -45,29 +45,67 @@ interface Issue {
 
 ## Retry Strategy
 
-Zlient automatically retries requests based on the configured strategy.
+Zlient automatically retries requests based on the configured strategy using exponential backoff.
 
-### Default Behavior
-- **Max Retries**: 2
-- **Methods**: `GET`, `HEAD`
-- **Status Codes**: `>= 500`
-- **Network Errors**: Always retried
-
-### Custom Configuration
+### Configuration
 
 ```typescript
 const client = new HttpClient({
-  // ...
+  baseUrls: { default: 'https://api.example.com' },
   retry: {
-    maxRetries: 5,
-    baseDelayMs: 500, // Exponential backoff starts here
-    jitter: 0.3,      // Randomize delay to prevent Thundering Herd
-    
-    // Also retry on 429 Too Many Requests
-    retryStatusCodes: ['INTERNAL_SERVER_ERROR', 'TOO_MANY_REQUESTS'],
-    
-    // Also retry POST requests
-    retryMethods: ['GET', 'POST']
-  }
+    maxAttempts: 3, // Total number of attempts (including initial request)
+    baseDelayMs: 1000, // Initial delay in milliseconds for exponential backoff
+    jitter: 0.2, // Optional: randomize delays to prevent thundering herd (0..1)
+    retryMethods: ['GET', 'POST', 'PUT'], // HTTP methods eligible for retry
+    retryStatusCodes: [500, 502, 503, 504], // HTTP status codes eligible for retry
+    respectRetryAfter: true, // Honor 'Retry-After' header if present
+    shouldRetry: (ctx) => {
+      // Optional: custom retry logic
+      return ctx.error instanceof NetworkError;
+    },
+  },
+});
+```
+
+### Exponential Backoff
+
+Delays between retries follow this formula: `baseDelayMs * 2^(attempt - 1)`
+
+- **1st retry**: `baseDelayMs * 2^0` = 1000ms
+- **2nd retry**: `baseDelayMs * 2^1` = 2000ms
+- **3rd retry**: `baseDelayMs * 2^2` = 4000ms
+
+With jitter enabled, delays are randomized by the specified factor to prevent the "thundering herd" problem.
+
+### Retry-After Support
+
+When `respectRetryAfter` is `true`, Zlient respects the `Retry-After` header from the server:
+
+```typescript
+retry: {
+  maxAttempts: 3,
+  baseDelayMs: 1000,
+  retryStatusCodes: [429, 503],
+  retryMethods: ['GET'],
+  respectRetryAfter: true,  // Will use header value if present
+}
+```
+
+### Per-Request Control
+
+Skip retry for a specific request:
+
+```typescript
+const { data } = await client.get('/critical-check', { skipRetry: true });
+```
+
+Skip retry for a specific endpoint:
+
+```typescript
+const risky = client.createEndpoint({
+  method: 'POST',
+  path: '/payment',
+  response: z.object({ success: z.boolean() }),
+  advanced: { skipRetry: true },
 });
 ```

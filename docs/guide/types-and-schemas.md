@@ -16,7 +16,9 @@ Zlient v3 supports **any** validation library that implements [Standard Schema](
 Import these from `zlient`:
 
 ### `StandardSchemaV1`
+
 The Standard Schema interface type. Use this for generic schema handling.
+
 ```typescript
 import { StandardSchemaV1 } from 'zlient';
 
@@ -26,7 +28,9 @@ function validate<T extends StandardSchemaV1>(schema: T, data: unknown) {
 ```
 
 ### `InferInput<T>` / `InferOutput<T>`
+
 Infer input/output types from any Standard Schema.
+
 ```typescript
 import { InferOutput } from 'zlient';
 import { z } from 'zod';
@@ -39,7 +43,9 @@ type User = InferOutput<typeof UserSchema>;
 ## Validation Utilities
 
 ### `safeParse(schema, data)`
+
 Validate data without throwing. Returns `{ success, data }` or `{ success, issues }`.
+
 ```typescript
 import { safeParse } from 'zlient';
 
@@ -52,7 +58,9 @@ if (result.success) {
 ```
 
 ### `parseOrThrow(schema, data)`
+
 Validate data, throwing `ApiError` on failure.
+
 ```typescript
 import { parseOrThrow } from 'zlient';
 
@@ -60,7 +68,9 @@ const user = await parseOrThrow(UserSchema, userData);
 ```
 
 ### `isStandardSchema(value)`
+
 Type guard to check if a value is a Standard Schema validator.
+
 ```typescript
 import { isStandardSchema } from 'zlient';
 
@@ -89,8 +99,8 @@ import { type } from 'arktype';
 const mixedEndpoint = client.createEndpoint({
   method: 'POST',
   path: (p) => `/users/${p.id}`,
-  pathParams: type({ id: 'string' }),      // ArkType
+  pathParams: type({ id: 'string' }), // ArkType
   request: v.object({ name: v.string() }), // Valibot
-  response: z.object({ id: z.string() }),  // Zod
+  response: z.object({ id: z.string() }), // Zod
 });
 ```

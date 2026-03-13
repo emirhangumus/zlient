@@ -13,14 +13,14 @@ const client = new HttpClient({
     beforeRequest: [
       ({ url, init }) => {
         console.log(`[HTTP] ${init.method} ${url}`);
-        
+
         // You can modify the request init object
         // e.g., append a custom tracking header
         const headers = init.headers as Record<string, string>;
         headers['X-Request-ID'] = crypto.randomUUID();
-      }
-    ]
-  }
+      },
+    ],
+  },
 });
 ```
 
@@ -35,13 +35,13 @@ const client = new HttpClient({
     afterResponse: [
       ({ request, response, parsed }) => {
         console.log(`[HTTP] ${response.status} ${request.url}`);
-        
+
         if (response.status === 401) {
           // Handle unauthorized globally
           window.location.href = '/login';
         }
-      }
-    ]
-  }
+      },
+    ],
+  },
 });
 ```

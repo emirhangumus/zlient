@@ -1,10 +1,10 @@
 import { HttpClient } from '../http/http-client';
 import {
-    HTTPMethod,
-    ResponseSchema,
-    SchemaDefinitionError,
-    SchemaMap,
-    StandardSchemaV1,
+  HTTPMethod,
+  ResponseSchema,
+  SchemaDefinitionError,
+  SchemaMap,
+  StandardSchemaV1,
 } from '../types';
 import { isStandardSchema, parseOrThrow } from '../validation';
 
@@ -57,7 +57,9 @@ export type EndpointCallParams<
 type InferResponse<S> = S extends StandardSchemaV1
   ? StandardSchemaV1.InferOutput<S>
   : S extends SchemaMap
-    ? { [K in keyof S]: S[K] extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<S[K]> : never }[keyof S]
+    ? {
+        [K in keyof S]: S[K] extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<S[K]> : never;
+      }[keyof S]
     : never;
 
 export type EndpointCall<

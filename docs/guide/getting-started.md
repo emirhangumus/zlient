@@ -11,15 +11,19 @@ bun add zlient
 Then install your preferred validation library:
 
 ::: code-group
+
 ```bash [Zod]
 npm install zod
 ```
+
 ```bash [Valibot]
 npm install valibot
 ```
+
 ```bash [ArkType]
 npm install arktype
 ```
+
 :::
 
 ::: tip Standard Schema
@@ -29,13 +33,14 @@ Zlient supports **any** validation library that implements [Standard Schema](htt
 ## Quick Start
 
 ### 1. Initialize Client
+
 ```typescript
 import { HttpClient } from 'zlient';
 
 const client = new HttpClient({
-  baseUrls: { 
-    default: 'https://api.example.com' 
-  }
+  baseUrls: {
+    default: 'https://api.example.com',
+  },
 });
 ```
 
@@ -44,6 +49,7 @@ const client = new HttpClient({
 Use your preferred validation library:
 
 ::: code-group
+
 ```typescript [Zod]
 import { z } from 'zod';
 
@@ -53,10 +59,11 @@ const getUser = client.createEndpoint({
   pathParams: z.object({ id: z.string() }),
   response: z.object({
     id: z.string(),
-    name: z.string()
-  })
+    name: z.string(),
+  }),
 });
 ```
+
 ```typescript [Valibot]
 import * as v from 'valibot';
 
@@ -66,10 +73,11 @@ const getUser = client.createEndpoint({
   pathParams: v.object({ id: v.string() }),
   response: v.object({
     id: v.string(),
-    name: v.string()
-  })
+    name: v.string(),
+  }),
 });
 ```
+
 ```typescript [ArkType]
 import { type } from 'arktype';
 
@@ -79,15 +87,17 @@ const getUser = client.createEndpoint({
   pathParams: type({ id: 'string' }),
   response: type({
     id: 'string',
-    name: 'string'
-  })
+    name: 'string',
+  }),
 });
 ```
+
 :::
 
 ### 3. Call it
+
 ```typescript
 const user = await getUser({
-  pathParams: { id: '123' }
+  pathParams: { id: '123' },
 });
 ```

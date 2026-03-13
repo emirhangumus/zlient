@@ -4,23 +4,21 @@ import { EndpointCall, EndpointConfig, EndpointImpl } from '../endpoint/base-end
 import { LoggerUtil, NoOpLogger } from '../logger';
 import { MetricsCollector, NoOpMetricsCollector } from '../metrics';
 import {
-    ApiError,
-    ClientOptions,
-    FetchLike,
-    HTTPMethod,
-    HTTPStatusCode,
-    HTTPStatusCodeKey,
-    HTTPStatusCodeNumber,
-    Interceptors,
-    RequestOptions,
-    ResponseSchema,
-    RetryStrategy,
-    StandardSchemaV1,
-    toQueryString,
+  ApiError,
+  ClientOptions,
+  FetchLike,
+  HTTPMethod,
+  HTTPStatusCodeNumber,
+  Interceptors,
+  RequestOptions,
+  ResponseSchema,
+  RetryPolicy,
+  StandardSchemaV1,
+  toQueryString,
 } from '../types';
 
 /**
- * HTTP client with built-in retry logic, authentication, and interceptors.
+ * HTTP client with built-in authentication, and interceptors.
  * Supports multiple base URLs, type-safe requests, and comprehensive error handling.
  *
  * @example
@@ -28,7 +26,6 @@ import {
  * const client = new HttpClient({
  *   baseUrls: { default: 'https://api.example.com' },
  *   headers: { 'Content-Type': 'application/json' },
- *   retry: { maxRetries: 3, baseDelayMs: 1000 },
  *   timeout: { requestTimeoutMs: 30000 }
  * });
  *
@@ -40,7 +37,7 @@ export class HttpClient {
   private baseUrls: ClientOptions['baseUrls'];
   private headers: Record<string, string>;
   private interceptors: Interceptors;
-  private retry: RetryStrategy;
+  private retryPolicy: RetryPolicy;
   private timeoutMs?: number;
   private auth: AuthProvider;
   private logger: LoggerUtil;
@@ -69,32 +66,15 @@ export class HttpClient {
     this.baseUrls = opts.baseUrls;
     this.headers = opts.headers ?? { 'Content-Type': 'application/json' };
     this.interceptors = opts.interceptors ?? {};
-    this.retry = opts.retry ?? {
-      maxRetries: 2,
-      baseDelayMs: 250,
-      jitter: 0.2,
-      retryMethods: ['GET', 'HEAD'],
-    };
 
-    // Default retryStatusCodes if not provided
-    if (!this.retry.retryStatusCodes) {
-      this.retry.retryStatusCodes = (
-        Object.keys(HTTPStatusCode) as HTTPStatusCodeKey[]
-      ).filter((key) => {
-        const code = HTTPStatusCode[key];
-        return typeof code === 'number' && code >= 500;
-      });
-    }
+    this.retryPolicy = opts.retry ?? { maxAttempts: 0, baseDelayMs: 1000 };
 
-    // Validate retry configuration
-    if (this.retry.maxRetries < 0) {
-      throw new Error('retry.maxRetries must be non-negative');
+    // Validate retry policy
+    if (!Number.isFinite(this.retryPolicy.maxAttempts) || this.retryPolicy.maxAttempts < 0) {
+      throw new Error('retry.maxAttempts must be a non-negative finite number');
     }
-    if (this.retry.baseDelayMs < 0) {
+    if (this.retryPolicy.baseDelayMs < 0) {
       throw new Error('retry.baseDelayMs must be non-negative');
-    }
-    if (this.retry.jitter !== undefined && (this.retry.jitter < 0 || this.retry.jitter > 1)) {
-      throw new Error('retry.jitter must be between 0 and 1');
     }
 
     this.timeoutMs = opts.timeout?.requestTimeoutMs;
@@ -129,37 +109,6 @@ export class HttpClient {
       throw new Error(`Unknown baseUrl key: "${k}". Available keys: ${availableKeys}`);
     }
     return url.replace(/\/$/, '');
-  }
-
-  /**
-   * Sleep for a specified duration (used for retry backoff).
-   * @private
-   */
-  private sleep(ms: number) {
-    return new Promise((res) => setTimeout(res, ms));
-  }
-
-  /**
-   * Execute a function with retry logic and exponential backoff.
-   * @private
-   */
-  private async withRetry<T>(
-    fn: () => Promise<T>,
-    canRetry: (ctx: { attempt: number; error?: unknown; response?: Response }) => boolean
-  ): Promise<T> {
-    let attempt = 0;
-    const { maxRetries, baseDelayMs, jitter = 0.2 } = this.retry;
-    while (true) {
-      try {
-        return await fn();
-      } catch (err: unknown) {
-        if (attempt >= maxRetries || !canRetry({ attempt, error: err })) throw err;
-        const backoff = baseDelayMs * 2 ** attempt;
-        const j = 1 + (Math.random() * 2 - 1) * jitter;
-        await this.sleep(backoff * j);
-        attempt++;
-      }
-    }
   }
 
   /**
@@ -271,6 +220,7 @@ export class HttpClient {
     await this.runBeforeHooks(url, init);
     // Track refresh attempts to prevent infinite loops
     let refreshAttempted = false;
+    let retryAttempt = 0;
 
     const doFetch = async () => {
       // Loop for potential token refresh retry
@@ -288,7 +238,15 @@ export class HttpClient {
         try {
           // Re-apply auth headers if this is a retry (unless skipAuth is set)
           if (refreshAttempted && !options?.skipAuth) {
-            const freshInit = { ...init };
+            const freshInit = {
+              ...init,
+              headers:
+                typeof init.headers === 'object' &&
+                !(init.headers instanceof Headers) &&
+                !Array.isArray(init.headers)
+                  ? { ...(init.headers as Record<string, string>) }
+                  : init.headers,
+            };
             // We need to re-run apply to get new token
             await this.auth.apply({ url, init: freshInit, options });
             // Update headers with potentially new token
@@ -311,7 +269,51 @@ export class HttpClient {
 
           const status = res.status as HTTPStatusCodeNumber;
           const contentType = res.headers.get('content-type') || '';
-          
+
+          // Check for errors first
+          if (!res.ok) {
+            if (
+              !options?.skipRetry &&
+              this.retryPolicy.maxAttempts > 0 &&
+              retryAttempt < this.retryPolicy.maxAttempts &&
+              this.retryPolicy.retryStatusCodes?.includes(status) &&
+              this.retryPolicy.retryMethods?.includes(method)
+            ) {
+              let shouldRetry = true;
+              if (this.retryPolicy.shouldRetry) {
+                shouldRetry = await this.retryPolicy.shouldRetry({
+                  url,
+                  method,
+                  status,
+                  attempt: retryAttempt,
+                  response: res.clone() as unknown as Response,
+                });
+              }
+              if (shouldRetry) {
+                retryAttempt++;
+                let delay = this.retryPolicy.baseDelayMs * 2 ** (retryAttempt - 1);
+                if (this.retryPolicy.respectRetryAfter) {
+                  const retryAfter =
+                    res.headers.get('Retry-After') || res.headers.get('retry-after');
+                  if (retryAfter) {
+                    delay = parseInt(retryAfter, 10) * 1000;
+                    this.logger.warn(
+                      `Request failed with status ${status}. Retrying after ${delay}ms due to Retry-After header...`,
+                      { method, url, status, retryAttempt: retryAttempt + 1 }
+                    );
+                  }
+                } else {
+                  this.logger.warn(
+                    `Request failed with status ${status}. Retrying attempt ${retryAttempt} after ${delay}ms...`,
+                    { method, url, status, retryAttempt }
+                  );
+                }
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                continue;
+              }
+            }
+          }
+
           // Handle different response types appropriately
           let data: any;
           if (contentType.includes('json')) {
@@ -330,7 +332,7 @@ export class HttpClient {
           } else {
             data = await res.text();
           }
-          
+
           await this.runAfterHooks(new Request(url, init), res, data);
 
           const duration = Date.now() - startTime;
@@ -376,27 +378,7 @@ export class HttpClient {
       }
     };
 
-    const canRetry = ({ error }: { error?: unknown }) => {
-      // Don't retry timeouts or aborts
-      if (error && typeof error === 'object' && 'name' in error) {
-        const errorName = (error as { name?: string }).name;
-        if (errorName === 'AbortError' || errorName === 'TimeoutError') return false;
-      }
-      // Retry on network errors or configured status codes
-      if (error instanceof ApiError && error.status) {
-        const retryCodes = this.retry.retryStatusCodes;
-        if (retryCodes?.some((codeKey) => HTTPStatusCode[codeKey] === error.status)) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    if (options?.skipRetry || !this.retry.retryMethods?.includes(method)) {
-      return doFetch();
-    }
-
-    return this.withRetry(doFetch, canRetry);
+    return doFetch();
   }
 
   /**

@@ -462,10 +462,7 @@ describe('Edge Cases', () => {
 
     const result = await safeParse(TreeSchema, {
       value: 'root',
-      children: [
-        { value: 'child1' },
-        { value: 'child2', children: [{ value: 'grandchild' }] },
-      ],
+      children: [{ value: 'child1' }, { value: 'child2', children: [{ value: 'grandchild' }] }],
     });
 
     expect(result.success).toBe(true);
