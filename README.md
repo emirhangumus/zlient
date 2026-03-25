@@ -255,11 +255,15 @@ socket.send({ text: 'Hello!' });
 ```typescript
 const stream = client.createSSE({
   path: '/events',
-  response: z.object({ type: z.string(), value: z.number() }),
+  response: {
+    message: z.object({ type: z.literal('connected') }),
+    time: z.string(),
+  },
 });
 
 const sse = stream();
-sse.on('message', (data) => console.log(data.value));
+sse.on('message', (data) => console.log(data.type)); // Typed as { type: 'connected' }
+sse.on('time', (data) => console.log(data)); // Typed as string
 ```
 
 ---

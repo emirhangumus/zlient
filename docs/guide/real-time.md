@@ -56,14 +56,20 @@ socket.on('close', (event) => console.log('WS Closed:', event.code));
 
 ## Server-Sent Events (SSE)
 
-SSE is a lightweight way to receive push updates from a server over HTTP. Zlient simplifies this with `createSSE`.
+SSE is a lightweight way to receive push updates from a server over HTTP. Zlient simplifies this with `createSSE`, providing type-safe event listeners and validation.
 
 ### Defining an SSE Endpoint
+
+You can define a single schema for the default `message` event, or a map of schemas for different event types.
+
+#### **Single Schema**
+
+If you only need to validate the default `message` event (or use the same schema for all events):
 
 ```typescript
 const eventStream = client.createSSE({
   path: '/events',
-  // Validate incoming event data
+  // Validate incoming message data
   response: z.discriminatedUnion('type', [
     z.object({ type: z.literal('connected') }),
     z.object({ type: z.literal('update'), value: z.number() }),
@@ -71,25 +77,42 @@ const eventStream = client.createSSE({
 });
 ```
 
+#### **Multi-Schema (Event-Specific)**
+
+If your server sends different event types with distinct structures, you can map schemas to event names:
+
+```typescript
+const eventStream = client.createSSE({
+  path: '/events',
+  response: {
+    // Schema for 'message' event
+    message: z.object({ type: z.literal('connected') }),
+    // Schema for 'time' event
+    time: z.string(),
+    // Schema for 'update' event
+    update: z.object({ id: z.string(), val: z.number() }),
+  },
+});
+```
+
 ### Usage
+
+Zlient provides full type safety based on the schemas defined in the endpoint configuration.
 
 ```typescript
 const stream = eventStream();
 
-// Handle incoming typed messages
+// Typed as { type: 'connected' }
 stream.on('message', (data) => {
-  if (data.type === 'update') {
-    console.log('New value:', data.value);
-  }
+  console.log('Successfully connected');
 });
 
-// Handle custom events
-// If your server sends events with custom names: "event: custom_name"
-stream.on('custom_name', (data) => {
-  console.log('Received custom event:', data);
+// Typed as string
+stream.on('time', (data) => {
+  console.log('Current server time:', data);
 });
 
-// Handle connection events
+// Handlers for 'open' and 'error' are also supported
 stream.on('open', (ev) => console.log('SSE Connected'));
 stream.on('error', (err) => console.error('SSE Error:', err));
 
