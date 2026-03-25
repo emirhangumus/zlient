@@ -105,4 +105,69 @@ describe('SSE Support', () => {
       }
     });
   });
+
+  it('should support multiple schemas for different event types', (done) => {
+    const mockEventSource = {
+      onopen: null as any,
+      onmessage: null as any,
+      onerror: null as any,
+      readyState: 0,
+      close: mock(() => {}),
+      addEventListener: mock((event: string, handler: any) => {
+        if (event === 'time') {
+          setTimeout(() => {
+            handler({ data: JSON.stringify('2024-03-26T00:00:00Z') });
+          }, 10);
+        }
+      }),
+    };
+
+    (globalThis as any).EventSource = mock(() => mockEventSource);
+
+    const eventStream = client.createSSE({
+      path: '/events',
+      response: {
+        message: z.object({ type: z.literal('connected') }),
+        time: z.string(),
+      },
+    });
+
+    const sse = eventStream();
+    let messageReceived = false;
+    let timeReceived = false;
+
+    sse.on('message', (data) => {
+      try {
+        expect(data.type).toBe('connected');
+        messageReceived = true;
+        if (messageReceived && timeReceived) {
+          sse.close();
+          done();
+        }
+      } catch (e) {
+        done(e);
+      }
+    });
+
+    sse.on('time', (data) => {
+      try {
+        expect(typeof data).toBe('string');
+        expect(data).toBe('2024-03-26T00:00:00Z');
+        timeReceived = true;
+        if (messageReceived && timeReceived) {
+          sse.close();
+          done();
+        }
+      } catch (e) {
+        done(e);
+      }
+    });
+
+    // Trigger message
+    setTimeout(() => {
+      if (mockEventSource.onmessage) {
+        mockEventSource.onmessage({ data: JSON.stringify({ type: 'connected' }) });
+      }
+    }, 5);
+  });
 });

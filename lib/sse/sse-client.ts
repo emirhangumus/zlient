@@ -1,8 +1,8 @@
-import { SSEConnection, StandardSchemaV1 } from '../types';
+import { SSEConnection, SSEResponseSchema, StandardSchemaV1 } from '../types';
 import { parseOrThrow } from '../validation';
 
 export class SSEConnectionImpl<
-  ResSchema extends StandardSchemaV1 | undefined,
+  ResSchema extends SSEResponseSchema | undefined,
 > implements SSEConnection<ResSchema> {
   private es: EventSource;
   private handlers: Map<string, Set<Function>> = new Map();
@@ -32,14 +32,26 @@ export class SSEConnectionImpl<
           }
         }
 
-        if (!this.skipResponseValidation && this.responseSchema) {
-          data = await parseOrThrow(this.responseSchema, data);
+        const schema = this.getSchema('message');
+        if (!this.skipResponseValidation && schema) {
+          data = await parseOrThrow(schema, data);
         }
         this.emit('message', data);
       } catch (error) {
         this.emit('error', error);
       }
     };
+  }
+
+  private getSchema(event: string): StandardSchemaV1 | undefined {
+    if (!this.responseSchema) return undefined;
+    if ('~standard' in this.responseSchema) {
+      if (event === 'message') {
+        return this.responseSchema as StandardSchemaV1;
+      }
+      return undefined;
+    }
+    return (this.responseSchema as Record<string, StandardSchemaV1>)[event];
   }
 
   on(event: string, handler: Function): void {
@@ -57,8 +69,9 @@ export class SSEConnectionImpl<
                 // Not JSON
               }
             }
-            if (!this.skipResponseValidation && this.responseSchema) {
-              data = await parseOrThrow(this.responseSchema, data);
+            const schema = this.getSchema(event);
+            if (!this.skipResponseValidation && schema) {
+              data = await parseOrThrow(schema, data);
             }
             this.emit(event, data);
           } catch (error) {

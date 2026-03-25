@@ -15,6 +15,7 @@ import {
   RetryPolicy,
   SSEEndpointCall,
   SSEEndpointConfig,
+  SSEResponseSchema,
   StandardSchemaV1,
   toQueryString,
   WSEndpointCall,
@@ -531,7 +532,7 @@ export class HttpClient {
    * @returns SSE endpoint call function
    */
   createSSE<
-    ResSchema extends StandardSchemaV1 | undefined = undefined,
+    ResSchema extends SSEResponseSchema | undefined = undefined,
     QuerySchema extends StandardSchemaV1 | undefined = undefined,
     PathSchema extends StandardSchemaV1 | undefined = undefined,
   >(

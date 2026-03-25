@@ -1,9 +1,15 @@
 import { HttpClient } from '../http/http-client';
-import { StandardSchemaV1, toQueryString, SSEEndpointCall, SSEEndpointConfig } from '../types';
+import {
+  StandardSchemaV1,
+  toQueryString,
+  SSEEndpointCall,
+  SSEEndpointConfig,
+  SSEResponseSchema,
+} from '../types';
 import { SSEConnectionImpl } from './sse-client';
 
 export class SSEEndpointImpl<
-  ResSchema extends StandardSchemaV1 | undefined,
+  ResSchema extends SSEResponseSchema | undefined,
   QuerySchema extends StandardSchemaV1 | undefined,
   PathSchema extends StandardSchemaV1 | undefined,
 > {

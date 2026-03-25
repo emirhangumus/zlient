@@ -535,7 +535,7 @@ export type WSEndpointCall<
  * Configuration for SSE endpoints.
  */
 export type SSEEndpointConfig<
-  ResSchema extends StandardSchemaV1 | undefined = undefined,
+  ResSchema extends SSEResponseSchema | undefined = undefined,
   QuerySchema extends StandardSchemaV1 | undefined = undefined,
   PathSchema extends StandardSchemaV1 | undefined = undefined,
 > = {
@@ -565,29 +565,45 @@ export type SSEEndpointCallParams<
 };
 
 /**
+ * A Standard Schema or a map of event names to schemas for SSE.
+ */
+export type SSEResponseSchema = StandardSchemaV1 | Record<string, StandardSchemaV1>;
+
+/**
+ * Helper to map SSE response schema to events.
+ */
+type SSEEvents<T extends SSEResponseSchema | undefined> = T extends StandardSchemaV1
+  ? { message: T }
+  : T extends Record<string, StandardSchemaV1>
+    ? T
+    : Record<string, never>;
+
+/**
  * Interface for an SSE connection with typed messages.
  */
-export interface SSEConnection<ResSchema extends StandardSchemaV1 | undefined> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  on(
-    event: 'message',
+export interface SSEConnection<T extends SSEResponseSchema | undefined> {
+  /** Register a typesafe handler for a specific event */
+  on<K extends keyof SSEEvents<T>>(
+    event: K,
     handler: (
-      data: ResSchema extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<ResSchema> : any
+      data: StandardSchemaV1.InferOutput<Extract<SSEEvents<T>[K], StandardSchemaV1>>
     ) => void
   ): void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  on(event: 'open', handler: (event: any) => void): void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  on(event: 'error', handler: (event: any) => void): void;
+
+  /** Register a handler for built-in events */
+  on(event: 'open' | 'error', handler: (event: any) => void): void;
+
+  /** Register a catch-all handler for other events */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   on(event: string, handler: (data: any) => void): void;
+
   off(event: string, handler: Function): void;
   close(): void;
   readonly readyState: number;
 }
 
 export type SSEEndpointCall<
-  ResSchema extends StandardSchemaV1 | undefined,
+  ResSchema extends SSEResponseSchema | undefined,
   QuerySchema extends StandardSchemaV1 | undefined,
   PathSchema extends StandardSchemaV1 | undefined,
 > = (params?: SSEEndpointCallParams<QuerySchema, PathSchema>) => SSEConnection<ResSchema>;
