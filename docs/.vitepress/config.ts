@@ -30,6 +30,7 @@ export default defineConfig({
                     { text: 'Interceptors', link: '/guide/interceptors' },
                     { text: 'Error Handling', link: '/guide/error-handling' },
                     { text: 'Types & Schemas', link: '/guide/types-and-schemas' },
+                    { text: 'Real-Time (WS & SSE)', link: '/guide/real-time' },
                     { text: 'Observability', link: '/guide/observability' }
                 ]
             }

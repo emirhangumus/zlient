@@ -16,6 +16,7 @@ Build robust, type-safe API clients with runtime validation, retry logic, and ze
 - **Runtime Validation**: Validate requests, responses, query params, and path params.
 - **Resilience**: Built-in exponential backoff retries and timeouts.
 - **Auth**: Logic-safe authentication providers (Bearer, API Key, Custom).
+- **Real-Time**: Type-safe WebSockets and Server-Sent Events (SSE).
 - **Observability**: Hooks for structured logging and metrics.
 
 ---
@@ -231,6 +232,34 @@ const client = new HttpClient({
   logger: new ConsoleLogger(),
   metrics: new InMemoryMetricsCollector(),
 });
+```
+
+### Real-Time (WebSockets & SSE)
+
+Zlient makes real-time communication as simple as HTTP requests.
+
+#### **WebSockets**
+```typescript
+const chatWs = client.createWebSocket({
+  path: '/chat',
+  send: z.object({ text: z.string() }),
+  receive: z.object({ user: z.string(), text: z.string() }),
+});
+
+const socket = chatWs();
+socket.on('message', (data) => console.log(data.text));
+socket.send({ text: 'Hello!' });
+```
+
+#### **SSE**
+```typescript
+const stream = client.createSSE({
+  path: '/events',
+  response: z.object({ type: z.string(), value: z.number() }),
+});
+
+const sse = stream();
+sse.on('message', (data) => console.log(data.value));
 ```
 
 ---

@@ -1,8 +1,8 @@
 import type { AuthProvider } from '../auth';
 import { NoAuth } from '../auth';
-import { EndpointCall, EndpointConfig, EndpointImpl } from '../endpoint/base-endpoint';
 import { LoggerUtil, NoOpLogger } from '../logger';
 import { MetricsCollector, NoOpMetricsCollector } from '../metrics';
+import { SSEEndpointImpl } from '../sse/sse-endpoint';
 import {
   ApiError,
   ClientOptions,
@@ -13,9 +13,15 @@ import {
   RequestOptions,
   ResponseSchema,
   RetryPolicy,
+  SSEEndpointCall,
+  SSEEndpointConfig,
   StandardSchemaV1,
   toQueryString,
+  WSEndpointCall,
+  WSEndpointConfig,
 } from '../types';
+import { WSEndpointImpl } from '../ws/ws-endpoint';
+import { EndpointCall, EndpointConfig, EndpointImpl } from './http-endpoint';
 
 /**
  * HTTP client with built-in authentication, and interceptors.
@@ -498,5 +504,40 @@ export class HttpClient {
   ): EndpointCall<ResSchema, ReqSchema, QuerySchema, PathSchema, MustHeaderKeys> {
     const endpoint = new EndpointImpl(this, config);
     return (params) => endpoint.call(params);
+  }
+
+  /**
+   * Create a strongly-typed WebSocket endpoint builder.
+   *
+   * @param config - WebSocket endpoint configuration
+   * @returns WebSocket endpoint call function
+   */
+  createWebSocket<
+    SendSchema extends StandardSchemaV1 | undefined = undefined,
+    ReceiveSchema extends StandardSchemaV1 | undefined = undefined,
+    QuerySchema extends StandardSchemaV1 | undefined = undefined,
+    PathSchema extends StandardSchemaV1 | undefined = undefined,
+  >(
+    config: WSEndpointConfig<SendSchema, ReceiveSchema, QuerySchema, PathSchema>
+  ): WSEndpointCall<SendSchema, ReceiveSchema, QuerySchema, PathSchema> {
+    const endpoint = new WSEndpointImpl(this, config);
+    return endpoint.createCall();
+  }
+
+  /**
+   * Create a strongly-typed Server-Sent Events (SSE) endpoint builder.
+   *
+   * @param config - SSE endpoint configuration
+   * @returns SSE endpoint call function
+   */
+  createSSE<
+    ResSchema extends StandardSchemaV1 | undefined = undefined,
+    QuerySchema extends StandardSchemaV1 | undefined = undefined,
+    PathSchema extends StandardSchemaV1 | undefined = undefined,
+  >(
+    config: SSEEndpointConfig<ResSchema, QuerySchema, PathSchema>
+  ): SSEEndpointCall<ResSchema, QuerySchema, PathSchema> {
+    const endpoint = new SSEEndpointImpl(this, config);
+    return endpoint.createCall();
   }
 }

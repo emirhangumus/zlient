@@ -23,6 +23,9 @@ features:
   - title: Standard Schema
     details: Use Zod, Valibot, ArkType, or any Standard Schema-compatible library. Your choice.
     icon: ✅
+  - title: Real-Time Support
+    details: First-class support for WebSockets and SSE with typed messages.
+    icon: 📡
   - title: Bring Your Own Validator
     details: No vendor lock-in. Switch validation libraries without changing your endpoints.
     icon: 🔄

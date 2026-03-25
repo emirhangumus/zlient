@@ -452,3 +452,142 @@ export function toQueryString(q?: RequestOptions['query']): string {
   const s = params.toString();
   return s ? `?${s}` : '';
 }
+
+/**
+ * Configuration for WebSocket endpoints.
+ */
+export type WSEndpointConfig<
+  SendSchema extends StandardSchemaV1 | undefined = undefined,
+  ReceiveSchema extends StandardSchemaV1 | undefined = undefined,
+  QuerySchema extends StandardSchemaV1 | undefined = undefined,
+  PathSchema extends StandardSchemaV1 | undefined = undefined,
+> = {
+  path: string | ((params: StandardSchemaV1.InferOutput<Exclude<PathSchema, undefined>>) => string);
+  send?: SendSchema;
+  receive?: ReceiveSchema;
+  query?: QuerySchema;
+  pathParams?: PathSchema;
+  advanced?: {
+    baseUrlKey?: string;
+    skipAuth?: boolean;
+    skipRequestValidation?: boolean;
+    skipResponseValidation?: boolean;
+  };
+};
+
+/**
+ * Parameters for calling a WebSocket endpoint.
+ */
+export type WSEndpointCallParams<
+  QuerySchema extends StandardSchemaV1 | undefined,
+  PathSchema extends StandardSchemaV1 | undefined,
+> = {
+  query?: QuerySchema extends StandardSchemaV1 ? StandardSchemaV1.InferInput<QuerySchema> : never;
+  pathParams?: PathSchema extends StandardSchemaV1
+    ? StandardSchemaV1.InferInput<PathSchema>
+    : never;
+  headers?: Record<string, string>;
+  protocols?: string | string[];
+};
+
+/**
+ * Interface for a WebSocket connection with typed messages.
+ */
+export interface WSConnection<
+  SendSchema extends StandardSchemaV1 | undefined,
+  ReceiveSchema extends StandardSchemaV1 | undefined,
+> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  send(
+    data: SendSchema extends StandardSchemaV1 ? StandardSchemaV1.InferInput<SendSchema> : any
+  ): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(
+    event: 'message',
+    handler: (
+      data: ReceiveSchema extends StandardSchemaV1
+        ? StandardSchemaV1.InferOutput<ReceiveSchema>
+        : any
+    ) => void
+  ): void;
+  on(event: 'open', handler: () => void): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(event: 'close', handler: (event: any) => void): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(event: 'error', handler: (event: any) => void): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(event: string, handler: (data: any) => void): void;
+  off(event: string, handler: Function): void;
+  close(code?: number, reason?: string): void;
+  readonly readyState: number;
+}
+
+export type WSEndpointCall<
+  SendSchema extends StandardSchemaV1 | undefined,
+  ReceiveSchema extends StandardSchemaV1 | undefined,
+  QuerySchema extends StandardSchemaV1 | undefined,
+  PathSchema extends StandardSchemaV1 | undefined,
+> = (
+  params?: WSEndpointCallParams<QuerySchema, PathSchema>
+) => WSConnection<SendSchema, ReceiveSchema>;
+
+/**
+ * Configuration for SSE endpoints.
+ */
+export type SSEEndpointConfig<
+  ResSchema extends StandardSchemaV1 | undefined = undefined,
+  QuerySchema extends StandardSchemaV1 | undefined = undefined,
+  PathSchema extends StandardSchemaV1 | undefined = undefined,
+> = {
+  path: string | ((params: StandardSchemaV1.InferOutput<Exclude<PathSchema, undefined>>) => string);
+  response?: ResSchema;
+  query?: QuerySchema;
+  pathParams?: PathSchema;
+  advanced?: {
+    baseUrlKey?: string;
+    skipAuth?: boolean;
+    skipResponseValidation?: boolean;
+    withCredentials?: boolean;
+  };
+};
+
+/**
+ * Parameters for calling an SSE endpoint.
+ */
+export type SSEEndpointCallParams<
+  QuerySchema extends StandardSchemaV1 | undefined,
+  PathSchema extends StandardSchemaV1 | undefined,
+> = {
+  query?: QuerySchema extends StandardSchemaV1 ? StandardSchemaV1.InferInput<QuerySchema> : never;
+  pathParams?: PathSchema extends StandardSchemaV1
+    ? StandardSchemaV1.InferInput<PathSchema>
+    : never;
+};
+
+/**
+ * Interface for an SSE connection with typed messages.
+ */
+export interface SSEConnection<ResSchema extends StandardSchemaV1 | undefined> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(
+    event: 'message',
+    handler: (
+      data: ResSchema extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<ResSchema> : any
+    ) => void
+  ): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(event: 'open', handler: (event: any) => void): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(event: 'error', handler: (event: any) => void): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(event: string, handler: (data: any) => void): void;
+  off(event: string, handler: Function): void;
+  close(): void;
+  readonly readyState: number;
+}
+
+export type SSEEndpointCall<
+  ResSchema extends StandardSchemaV1 | undefined,
+  QuerySchema extends StandardSchemaV1 | undefined,
+  PathSchema extends StandardSchemaV1 | undefined,
+> = (params?: SSEEndpointCallParams<QuerySchema, PathSchema>) => SSEConnection<ResSchema>;

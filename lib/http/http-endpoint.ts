@@ -1,4 +1,3 @@
-import { HttpClient } from '../http/http-client';
 import {
   HTTPMethod,
   ResponseSchema,
@@ -7,6 +6,7 @@ import {
   StandardSchemaV1,
 } from '../types';
 import { isStandardSchema, parseOrThrow } from '../validation';
+import { HttpClient } from './http-client';
 
 export type EndpointConfig<
   ResSchema extends ResponseSchema,

@@ -57,3 +57,7 @@ bun.lock
 # VitePress
 docs/.vitepress/cache
 docs/.vitepress/dist
+
+# Temporary files/folders
+tmp/
+temp/
