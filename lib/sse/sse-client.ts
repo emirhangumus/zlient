@@ -98,48 +98,113 @@ export class SSEConnectionImpl<
       }
 
       const decoder = new TextDecoder();
-      let buffer = '';
+      let lineBuffer = '';
+      let eventData = '';
+      let eventName = 'message';
+      let lastCharWasCR = false;
+
+      const processLine = (line: string) => {
+        if (line === '') {
+          if (eventData) {
+            // Remove the trailing newline added by the spec
+            this.handleEvent(
+              eventName,
+              eventData.endsWith('\n') ? eventData.slice(0, -1) : eventData
+            );
+            eventData = '';
+          }
+          eventName = 'message';
+          return;
+        }
+
+        if (line.startsWith(':')) return;
+
+        const colonIndex = line.indexOf(':');
+        let field: string;
+        let value: string;
+
+        if (colonIndex === -1) {
+          field = line;
+          value = '';
+        } else {
+          field = line.slice(0, colonIndex);
+          value = line.slice(colonIndex + 1);
+          // Spec: If value starts with a U+0020 SPACE character, remove it.
+          if (value.startsWith(' ')) {
+            value = value.slice(1);
+          }
+        }
+
+        if (field === 'event') {
+          eventName = value;
+        } else if (field === 'data') {
+          // Spec: Append the value to the data buffer, followed by a LF character.
+          eventData += value + '\n';
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split(/\r\n|\r|\n/);
-        buffer = parts.pop() || '';
-
-        let eventData = '';
-        let eventName = 'message';
-
-        for (const line of parts) {
-          if (line === '') {
-            if (eventData) {
-              this.handleEvent(eventName, eventData.trim());
-              eventData = '';
-              eventName = 'message';
+        const chunk = decoder.decode(value, { stream: true });
+        for (let i = 0; i < chunk.length; i++) {
+          const char = chunk[i];
+          if (char === '\n') {
+            if (lastCharWasCR) {
+              lastCharWasCR = false;
+            } else {
+              processLine(lineBuffer);
+              lineBuffer = '';
             }
-            continue;
-          }
-
-          if (line.startsWith(':')) continue;
-
-          const colonIndex = line.indexOf(':');
-          if (colonIndex === -1) {
-            // Field only
-            this.processField(line, '', (name, data) => {
-              eventName = name || eventName;
-              eventData += data;
-            });
+          } else if (char === '\r') {
+            processLine(lineBuffer);
+            lineBuffer = '';
+            lastCharWasCR = true;
           } else {
-            const field = line.slice(0, colonIndex);
-            const value = line.slice(colonIndex + 1).trim();
-            if (field === 'event') {
-              eventName = value;
-            } else if (field === 'data') {
-              eventData += (eventData ? '\n' : '') + value;
+            if (lastCharWasCR) {
+              lastCharWasCR = false;
             }
-            // Ignore other fields like id, retry for now
+            lineBuffer += char;
           }
+        }
+
+        if (done) {
+          // Final flush of the decoder
+          const finalChunk = decoder.decode();
+          for (const char of finalChunk) {
+            if (char === '\n') {
+              if (lastCharWasCR) {
+                lastCharWasCR = false;
+              } else {
+                processLine(lineBuffer);
+                lineBuffer = '';
+              }
+            } else if (char === '\r') {
+              processLine(lineBuffer);
+              lineBuffer = '';
+              lastCharWasCR = true;
+            } else {
+              if (lastCharWasCR) {
+                lastCharWasCR = false;
+              }
+              lineBuffer += char;
+            }
+          }
+
+          // If there's a remaining lineBuffer without a terminal newline, process it
+          if (lineBuffer) {
+            processLine(lineBuffer);
+            lineBuffer = '';
+          }
+          // If there's a pending event, dispatch it (EOF acts as a final double-newline)
+          if (eventData) {
+            this.handleEvent(
+              eventName,
+              eventData.endsWith('\n') ? eventData.slice(0, -1) : eventData
+            );
+            eventData = '';
+          }
+          break;
         }
       }
     } catch (error) {
@@ -151,26 +216,21 @@ export class SSEConnectionImpl<
     }
   }
 
-  private processField(
-    field: string,
-    value: string,
-    callback: (name: string, data: string) => void
-  ) {
-    if (field === 'event') {
-      callback(value, '');
-    } else if (field === 'data') {
-      callback('', value);
-    }
-  }
-
   private async handleEvent(event: string, data: string) {
     let parsedData: any = data;
     try {
-      if (typeof data === 'string') {
+      if (typeof data === 'string' && data.length > 0) {
         try {
-          parsedData = JSON.parse(data);
+          // Only attempt JSON parse if it looks like it could be JSON
+          if (
+            (data.startsWith('{') && data.endsWith('}')) ||
+            (data.startsWith('[') && data.endsWith(']')) ||
+            (data.startsWith('"') && data.endsWith('"'))
+          ) {
+            parsedData = JSON.parse(data);
+          }
         } catch {
-          // Not JSON
+          // Not JSON or parse failed, keep as string
         }
       }
 
