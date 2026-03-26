@@ -1,10 +1,10 @@
 import { HttpClient } from '../http/http-client';
 import {
-  StandardSchemaV1,
-  toQueryString,
   SSEEndpointCall,
   SSEEndpointConfig,
   SSEResponseSchema,
+  StandardSchemaV1,
+  toQueryString,
 } from '../types';
 import { parseOrThrow } from '../validation';
 import { SSEConnectionImpl } from './sse-client';
@@ -67,8 +67,14 @@ export class SSEEndpointImpl<
         withCredentials: this.config.advanced?.withCredentials,
         method: this.config.method,
         data,
-        headers: { ...(this.config.advanced?.headers || {}), ...(headers || {}) },
+        headers: {
+          ...this.client.getHeaders(),
+          ...(this.config.advanced?.headers || {}),
+          ...(headers || {}),
+        },
         signal,
+        auth: this.config.advanced?.skipAuth ? undefined : this.client.getAuth(),
+        logger: this.client.getLogger(),
       });
     };
   }

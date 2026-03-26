@@ -157,6 +157,21 @@ export class HttpClient {
     return this.resolveBaseUrl(key);
   }
 
+  /** @internal */
+  public getAuth() {
+    return this.auth;
+  }
+
+  /** @internal */
+  public getHeaders() {
+    return this.headers;
+  }
+
+  /** @internal */
+  public getLogger() {
+    return this.logger;
+  }
+
   /**
    * Make an HTTP request with automatic retry, authentication, and validation.
    *

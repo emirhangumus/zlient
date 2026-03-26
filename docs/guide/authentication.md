@@ -1,6 +1,6 @@
 # Authentication
 
-Zlient provides a flexible authentication system that runs **before** the request is sent.
+Zlient provides a flexible authentication system that runs **before** the request is sent. Auth providers are automatically applied to standard HTTP requests and **Server-Sent Events (SSE)**.
 
 ## Built-in Providers
 
@@ -39,6 +39,9 @@ const queryAuth = new ApiKeyAuth({
   value: 'secret',
 });
 ```
+
+> [!TIP]
+> Query-based authentication is the recommended way to authenticate **WebSocket** connections, as standard browser WebSockets do not support custom headers.
 
 ## Custom Providers
 

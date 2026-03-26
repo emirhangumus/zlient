@@ -1,4 +1,6 @@
-import { SSEConnection, SSEResponseSchema, StandardSchemaV1, HttpMethod } from '../types';
+import { AuthProvider } from '../auth';
+import { LoggerUtil } from '../logger';
+import { HttpMethod, SSEConnection, SSEResponseSchema, StandardSchemaV1 } from '../types';
 import { parseOrThrow } from '../validation';
 
 export interface SSEConnectionOptions {
@@ -8,6 +10,8 @@ export interface SSEConnectionOptions {
   data?: any;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  auth?: AuthProvider;
+  logger?: LoggerUtil;
 }
 
 export class SSEConnectionImpl<
@@ -27,9 +31,18 @@ export class SSEConnectionImpl<
 
   private async start() {
     try {
-      const { method = 'GET', data, headers = {}, withCredentials, signal } = this.options;
+      let {
+        method = 'GET',
+        data,
+        headers = {},
+        withCredentials,
+        signal,
+        auth,
+        logger,
+      } = this.options;
+      let url = this.url;
 
-      const init: RequestInit = {
+      const init: RequestInit & { __urlOverride?: string } = {
         method,
         headers: {
           Accept: 'text/event-stream',
@@ -37,6 +50,13 @@ export class SSEConnectionImpl<
         },
         signal: signal || this.abortController.signal,
       };
+
+      if (auth) {
+        await auth.apply({ url, init });
+        if (init.__urlOverride) {
+          url = init.__urlOverride;
+        }
+      }
 
       if (withCredentials) {
         init.credentials = 'include';
@@ -49,9 +69,23 @@ export class SSEConnectionImpl<
         }
       }
 
-      const response = await fetch(this.url, init);
+      if (logger) {
+        logger.debug('SSE connection initiated', { method, url, hasData: !!data });
+      }
+
+      const response = await fetch(url, init);
 
       if (!response.ok) {
+        if (logger) {
+          logger.error(
+            `SSE request failed with status ${response.status}`,
+            new Error('SSE Error'),
+            {
+              url,
+              status: response.status,
+            }
+          );
+        }
         throw new Error(`SSE request failed with status ${response.status}`);
       }
 

@@ -144,7 +144,7 @@ const ws = client.createWebSocket({
 
 #### **SSE Advanced**
 
-Zlient's SSE implementation is uniquely powerful, supporting custom HTTP methods (like `POST`), request bodies, and request validation. This is useful for APIs that require large query parameters or specific method designs.
+Zlient's SSE implementation is uniquely powerful, supporting custom HTTP methods (like `POST`), request bodies, and request validation. It also **automatically applies authentication** configured in the `HttpClient`.
 
 ```typescript
 const stream = client.createSSE({

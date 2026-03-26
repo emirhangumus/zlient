@@ -252,6 +252,9 @@ socket.send({ text: 'Hello!' });
 ```
 
 #### **SSE**
+
+Zlient's SSE implementation supports custom HTTP methods, request bodies, and **automatic authentication**.
+
 ```typescript
 const stream = client.createSSE({
   path: '/events',
