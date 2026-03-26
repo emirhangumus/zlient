@@ -122,9 +122,11 @@ stream.on('error', (err) => console.error('SSE Error:', err));
 
 ---
 
-## Advanced Configuration
+### Advanced Configuration
 
 Both `createWebSocket` and `createSSE` support an `advanced` property for fine-grained control:
+
+#### **WebSocket Advanced**
 
 ```typescript
 const ws = client.createWebSocket({
@@ -135,5 +137,27 @@ const ws = client.createWebSocket({
     skipRequestValidation: true, // Disable validation for outgoing messages
     skipResponseValidation: true, // Disable validation for incoming messages
   },
+});
+```
+
+#### **SSE Advanced**
+
+Zlient's SSE implementation is uniquely powerful, supporting custom HTTP methods (like `POST`) and request bodies. This is useful for APIs that require large query parameters or specific method designs.
+
+```typescript
+const stream = client.createSSE({
+  path: '/events',
+  advanced: {
+    method: 'POST', // Support GET (default), POST, PUT, etc.
+    headers: { 'X-Service-Name': 'billing' }, // Additional static headers
+    withCredentials: true, // Include cookies in cross-origin requests
+    skipResponseValidation: false,
+  },
+});
+
+// Call with additional dynamic headers or a request body
+const sse = stream({
+  body: { filter: 'active', tags: ['important', 'real-time'] },
+  headers: { 'X-Request-ID': 'uuid-123' },
 });
 ```

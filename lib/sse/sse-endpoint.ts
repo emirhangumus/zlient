@@ -20,7 +20,7 @@ export class SSEEndpointImpl<
 
   createCall(): SSEEndpointCall<ResSchema, QuerySchema, PathSchema> {
     return (params) => {
-      const { query, pathParams } = params || {};
+      const { query, pathParams, body, headers } = params || {};
 
       // Resolve Path
       let pathStr: string;
@@ -35,12 +35,13 @@ export class SSEEndpointImpl<
       const baseUrl = this.client.getBaseUrl(this.config.advanced?.baseUrlKey || 'default');
       const url = `${baseUrl}${pathStr}${toQueryString(query as any)}`;
 
-      return new SSEConnectionImpl<ResSchema>(
-        url,
-        this.config.response,
-        this.config.advanced?.skipResponseValidation,
-        this.config.advanced?.withCredentials
-      );
+      return new SSEConnectionImpl<ResSchema>(url, this.config.response, {
+        skipResponseValidation: this.config.advanced?.skipResponseValidation,
+        withCredentials: this.config.advanced?.withCredentials,
+        method: this.config.advanced?.method || 'GET',
+        body,
+        headers: { ...(this.config.advanced?.headers || {}), ...(headers || {}) },
+      });
     };
   }
 }

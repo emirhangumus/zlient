@@ -548,6 +548,8 @@ export type SSEEndpointConfig<
     skipAuth?: boolean;
     skipResponseValidation?: boolean;
     withCredentials?: boolean;
+    method?: HttpMethod;
+    headers?: Record<string, string>;
   };
 };
 
@@ -562,6 +564,8 @@ export type SSEEndpointCallParams<
   pathParams?: PathSchema extends StandardSchemaV1
     ? StandardSchemaV1.InferInput<PathSchema>
     : never;
+  body?: any;
+  headers?: Record<string, string>;
 };
 
 /**

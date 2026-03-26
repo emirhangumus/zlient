@@ -259,9 +259,16 @@ const stream = client.createSSE({
     message: z.object({ type: z.literal('connected') }),
     time: z.string(),
   },
+  advanced: {
+    method: 'POST', // Support GET (default), POST, etc.
+  }
 });
 
-const sse = stream();
+const sse = stream({
+  body: { filter: 'active' }, // Support request body for POST/PUT
+  headers: { 'X-Custom-ID': '123' }, // Custom headers
+});
+
 sse.on('message', (data) => console.log(data.type)); // Typed as { type: 'connected' }
 sse.on('time', (data) => console.log(data)); // Typed as string
 ```

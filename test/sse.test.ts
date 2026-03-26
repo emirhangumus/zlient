@@ -12,29 +12,18 @@ describe('SSE Support', () => {
   });
 
   it('should receive and validate SSE messages', (done) => {
-    // Mock EventSource
-    const mockEventSource = {
-      onopen: null as any,
-      onmessage: null as any,
-      onerror: null as any,
-      readyState: 0,
-      close: mock(() => {}),
-      addEventListener: mock((_event: string, _handler: any) => {}),
-    };
-
-    (globalThis as any).EventSource = mock(function (_url: string) {
-      setTimeout(() => {
-        if (mockEventSource.onopen) mockEventSource.onopen({});
-        if (mockEventSource.onmessage) {
-          mockEventSource.onmessage({ data: JSON.stringify({ type: 'connected' }) });
-        }
-        setTimeout(() => {
-          if (mockEventSource.onmessage) {
-            mockEventSource.onmessage({ data: JSON.stringify({ type: 'update', value: 42 }) });
-          }
-        }, 10);
-      }, 0);
-      return mockEventSource;
+    (globalThis as any).fetch = mock(async () => {
+      const stream = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode('data: {"type": "connected"}\n\n'));
+          setTimeout(() => {
+            controller.enqueue(encoder.encode('data: {"type": "update", "value": 42}\n\n'));
+            controller.close();
+          }, 10);
+        },
+      });
+      return { ok: true, status: 200, body: stream } as any;
     });
 
     const eventStream = client.createSSE({
@@ -71,22 +60,20 @@ describe('SSE Support', () => {
   });
 
   it('should handle custom events', (done) => {
-    const mockEventSource = {
-      onopen: null as any,
-      onmessage: null as any,
-      onerror: null as any,
-      readyState: 0,
-      close: mock(() => {}),
-      addEventListener: mock((event: string, handler: any) => {
-        if (event === 'custom') {
+    (globalThis as any).fetch = mock(async () => {
+      const stream = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
           setTimeout(() => {
-            handler({ data: JSON.stringify({ type: 'custom_event', val: 123 }) });
+            controller.enqueue(
+              encoder.encode('event: custom\ndata: {"type": "custom_event", "val": 123}\n\n')
+            );
+            controller.close();
           }, 10);
-        }
-      }),
-    };
-
-    (globalThis as any).EventSource = mock(() => mockEventSource);
+        },
+      });
+      return { ok: true, status: 200, body: stream } as any;
+    });
 
     const eventStream = client.createSSE({
       path: '/events',
@@ -107,22 +94,19 @@ describe('SSE Support', () => {
   });
 
   it('should support multiple schemas for different event types', (done) => {
-    const mockEventSource = {
-      onopen: null as any,
-      onmessage: null as any,
-      onerror: null as any,
-      readyState: 0,
-      close: mock(() => {}),
-      addEventListener: mock((event: string, handler: any) => {
-        if (event === 'time') {
+    (globalThis as any).fetch = mock(async () => {
+      const stream = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode('data: {"type": "connected"}\n\n'));
           setTimeout(() => {
-            handler({ data: JSON.stringify('2024-03-26T00:00:00Z') });
+            controller.enqueue(encoder.encode('event: time\ndata: "2024-03-26T00:00:00Z"\n\n'));
+            controller.close();
           }, 10);
-        }
-      }),
-    };
-
-    (globalThis as any).EventSource = mock(() => mockEventSource);
+        },
+      });
+      return { ok: true, status: 200, body: stream } as any;
+    });
 
     const eventStream = client.createSSE({
       path: '/events',
@@ -162,12 +146,5 @@ describe('SSE Support', () => {
         done(e);
       }
     });
-
-    // Trigger message
-    setTimeout(() => {
-      if (mockEventSource.onmessage) {
-        mockEventSource.onmessage({ data: JSON.stringify({ type: 'connected' }) });
-      }
-    }, 5);
   });
 });
