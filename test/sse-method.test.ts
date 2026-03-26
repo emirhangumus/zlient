@@ -34,17 +34,16 @@ describe('SSE Method and Body Support', () => {
     });
   });
 
-  it('should support POST method and body', (done) => {
+  it('should support POST method and data', async (done) => {
     const eventStream = client.createSSE({
+      method: 'POST',
       path: '/events',
       response: z.object({ type: z.string(), val: z.number() }),
-      advanced: {
-        method: 'POST',
-      },
+      request: z.object({ foo: z.string() }),
     });
 
-    const sse = eventStream({
-      body: { foo: 'bar' },
+    const sse = await eventStream({
+      data: { foo: 'bar' },
       headers: { 'X-Custom-Header': 'baz' },
     });
 
@@ -77,7 +76,18 @@ describe('SSE Method and Body Support', () => {
     });
   });
 
-  it('should handle multiline data', (done) => {
+  it('should validate request data', async () => {
+    const eventStream = client.createSSE({
+      method: 'POST',
+      path: '/events',
+      response: z.any(),
+      request: z.object({ foo: z.string() }),
+    });
+
+    await expect(eventStream({ data: { foo: 123 } as any })).rejects.toThrow();
+  });
+
+  it('should handle multiline data', async (done) => {
     (globalThis as any).fetch = mock(async () => {
       const stream = new ReadableStream({
         start(controller) {
@@ -90,11 +100,12 @@ describe('SSE Method and Body Support', () => {
     });
 
     const eventStream = client.createSSE({
+      method: 'GET',
       path: '/events',
       response: z.string(),
     });
 
-    const sse = eventStream();
+    const sse = await eventStream();
 
     sse.on('message', (data) => {
       try {

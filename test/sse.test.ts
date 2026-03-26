@@ -11,7 +11,7 @@ describe('SSE Support', () => {
     });
   });
 
-  it('should receive and validate SSE messages', (done) => {
+  it('should receive and validate SSE messages', async (done) => {
     (globalThis as any).fetch = mock(async () => {
       const stream = new ReadableStream({
         start(controller) {
@@ -27,6 +27,7 @@ describe('SSE Support', () => {
     });
 
     const eventStream = client.createSSE({
+      method: 'GET',
       path: '/events',
       response: z.discriminatedUnion('type', [
         z.object({ type: z.literal('connected') }),
@@ -34,7 +35,7 @@ describe('SSE Support', () => {
       ]),
     });
 
-    const sse = eventStream();
+    const sse = await eventStream();
     let count = 0;
 
     sse.on('message', (data) => {
@@ -59,7 +60,7 @@ describe('SSE Support', () => {
     sse.on('error', (err) => done(err));
   });
 
-  it('should handle custom events', (done) => {
+  it('should handle custom events', async (done) => {
     (globalThis as any).fetch = mock(async () => {
       const stream = new ReadableStream({
         start(controller) {
@@ -76,11 +77,12 @@ describe('SSE Support', () => {
     });
 
     const eventStream = client.createSSE({
+      method: 'GET',
       path: '/events',
       response: z.object({ type: z.literal('custom_event'), val: z.number() }),
     });
 
-    const sse = eventStream();
+    const sse = await eventStream();
     sse.on('custom', (data) => {
       try {
         expect(data.type).toBe('custom_event');
@@ -93,7 +95,7 @@ describe('SSE Support', () => {
     });
   });
 
-  it('should support multiple schemas for different event types', (done) => {
+  it('should support multiple schemas for different event types', async (done) => {
     (globalThis as any).fetch = mock(async () => {
       const stream = new ReadableStream({
         start(controller) {
@@ -109,6 +111,7 @@ describe('SSE Support', () => {
     });
 
     const eventStream = client.createSSE({
+      method: 'GET',
       path: '/events',
       response: {
         message: z.object({ type: z.literal('connected') }),
@@ -116,7 +119,7 @@ describe('SSE Support', () => {
       },
     });
 
-    const sse = eventStream();
+    const sse = await eventStream();
     let messageReceived = false;
     let timeReceived = false;
 

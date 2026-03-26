@@ -536,19 +536,22 @@ export type WSEndpointCall<
  */
 export type SSEEndpointConfig<
   ResSchema extends SSEResponseSchema | undefined = undefined,
+  ReqSchema extends StandardSchemaV1 | undefined = undefined,
   QuerySchema extends StandardSchemaV1 | undefined = undefined,
   PathSchema extends StandardSchemaV1 | undefined = undefined,
 > = {
+  method: HttpMethod;
   path: string | ((params: StandardSchemaV1.InferOutput<Exclude<PathSchema, undefined>>) => string);
   response?: ResSchema;
+  request?: ReqSchema;
   query?: QuerySchema;
   pathParams?: PathSchema;
   advanced?: {
     baseUrlKey?: string;
     skipAuth?: boolean;
+    skipRequestValidation?: boolean;
     skipResponseValidation?: boolean;
     withCredentials?: boolean;
-    method?: HttpMethod;
     headers?: Record<string, string>;
   };
 };
@@ -557,15 +560,17 @@ export type SSEEndpointConfig<
  * Parameters for calling an SSE endpoint.
  */
 export type SSEEndpointCallParams<
+  ReqSchema extends StandardSchemaV1 | undefined,
   QuerySchema extends StandardSchemaV1 | undefined,
   PathSchema extends StandardSchemaV1 | undefined,
 > = {
+  data?: ReqSchema extends StandardSchemaV1 ? StandardSchemaV1.InferInput<ReqSchema> : never;
   query?: QuerySchema extends StandardSchemaV1 ? StandardSchemaV1.InferInput<QuerySchema> : never;
   pathParams?: PathSchema extends StandardSchemaV1
     ? StandardSchemaV1.InferInput<PathSchema>
     : never;
-  body?: any;
   headers?: Record<string, string>;
+  signal?: AbortSignal;
 };
 
 /**
@@ -608,6 +613,9 @@ export interface SSEConnection<T extends SSEResponseSchema | undefined> {
 
 export type SSEEndpointCall<
   ResSchema extends SSEResponseSchema | undefined,
+  ReqSchema extends StandardSchemaV1 | undefined,
   QuerySchema extends StandardSchemaV1 | undefined,
   PathSchema extends StandardSchemaV1 | undefined,
-> = (params?: SSEEndpointCallParams<QuerySchema, PathSchema>) => SSEConnection<ResSchema>;
+> = (
+  params?: SSEEndpointCallParams<ReqSchema, QuerySchema, PathSchema>
+) => Promise<SSEConnection<ResSchema>>;

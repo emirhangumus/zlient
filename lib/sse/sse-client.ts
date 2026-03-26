@@ -5,8 +5,9 @@ export interface SSEConnectionOptions {
   skipResponseValidation?: boolean;
   withCredentials?: boolean;
   method?: HttpMethod;
-  body?: any;
+  data?: any;
   headers?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 export class SSEConnectionImpl<
@@ -26,7 +27,7 @@ export class SSEConnectionImpl<
 
   private async start() {
     try {
-      const { method = 'GET', body, headers = {}, withCredentials } = this.options;
+      const { method = 'GET', data, headers = {}, withCredentials, signal } = this.options;
 
       const init: RequestInit = {
         method,
@@ -34,15 +35,15 @@ export class SSEConnectionImpl<
           Accept: 'text/event-stream',
           ...headers,
         },
-        signal: this.abortController.signal,
+        signal: signal || this.abortController.signal,
       };
 
       if (withCredentials) {
         init.credentials = 'include';
       }
 
-      if (body) {
-        init.body = typeof body === 'object' ? JSON.stringify(body) : String(body);
+      if (data) {
+        init.body = typeof data === 'object' ? JSON.stringify(data) : String(data);
         if (!init.headers || !('Content-Type' in (init.headers as any))) {
           (init.headers as any)['Content-Type'] = 'application/json';
         }

@@ -533,11 +533,12 @@ export class HttpClient {
    */
   createSSE<
     ResSchema extends SSEResponseSchema | undefined = undefined,
+    ReqSchema extends StandardSchemaV1 | undefined = undefined,
     QuerySchema extends StandardSchemaV1 | undefined = undefined,
     PathSchema extends StandardSchemaV1 | undefined = undefined,
   >(
-    config: SSEEndpointConfig<ResSchema, QuerySchema, PathSchema>
-  ): SSEEndpointCall<ResSchema, QuerySchema, PathSchema> {
+    config: SSEEndpointConfig<ResSchema, ReqSchema, QuerySchema, PathSchema>
+  ): SSEEndpointCall<ResSchema, ReqSchema, QuerySchema, PathSchema> {
     const endpoint = new SSEEndpointImpl(this, config);
     return endpoint.createCall();
   }

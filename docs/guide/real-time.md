@@ -68,6 +68,7 @@ If you only need to validate the default `message` event (or use the same schema
 
 ```typescript
 const eventStream = client.createSSE({
+  method: 'GET',
   path: '/events',
   // Validate incoming message data
   response: z.discriminatedUnion('type', [
@@ -83,6 +84,7 @@ If your server sends different event types with distinct structures, you can map
 
 ```typescript
 const eventStream = client.createSSE({
+  method: 'GET',
   path: '/events',
   response: {
     // Schema for 'message' event
@@ -100,7 +102,7 @@ const eventStream = client.createSSE({
 Zlient provides full type safety based on the schemas defined in the endpoint configuration.
 
 ```typescript
-const stream = eventStream();
+const stream = await eventStream();
 
 // Typed as { type: 'connected' }
 stream.on('message', (data) => {
@@ -142,22 +144,23 @@ const ws = client.createWebSocket({
 
 #### **SSE Advanced**
 
-Zlient's SSE implementation is uniquely powerful, supporting custom HTTP methods (like `POST`) and request bodies. This is useful for APIs that require large query parameters or specific method designs.
+Zlient's SSE implementation is uniquely powerful, supporting custom HTTP methods (like `POST`), request bodies, and request validation. This is useful for APIs that require large query parameters or specific method designs.
 
 ```typescript
 const stream = client.createSSE({
+  method: 'POST', // Support GET (default), POST, PUT, etc.
   path: '/events',
+  request: z.object({ filter: z.string(), tags: z.array(z.string()) }),
   advanced: {
-    method: 'POST', // Support GET (default), POST, PUT, etc.
     headers: { 'X-Service-Name': 'billing' }, // Additional static headers
     withCredentials: true, // Include cookies in cross-origin requests
     skipResponseValidation: false,
   },
 });
 
-// Call with additional dynamic headers or a request body
-const sse = stream({
-  body: { filter: 'active', tags: ['important', 'real-time'] },
+// Call with additional dynamic headers or request data
+const sse = await stream({
+  data: { filter: 'active', tags: ['important', 'real-time'] },
   headers: { 'X-Request-ID': 'uuid-123' },
 });
 ```

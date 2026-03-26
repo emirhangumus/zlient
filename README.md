@@ -264,8 +264,8 @@ const stream = client.createSSE({
   }
 });
 
-const sse = stream({
-  body: { filter: 'active' }, // Support request body for POST/PUT
+const sse = await stream({
+  data: { filter: 'active' }, // Support request body for POST/PUT
   headers: { 'X-Custom-ID': '123' }, // Custom headers
 });
 
