@@ -1,4 +1,5 @@
 import {
+  ApiError,
   HTTPMethod,
   ResponseSchema,
   SchemaDefinitionError,
@@ -99,37 +100,47 @@ export class EndpointImpl<
         (key) => !headers || !(key in headers)
       );
       if (missingHeaders.length > 0) {
-        throw new Error(`Missing required header(s): ${missingHeaders.join(', ')}`);
+        throw new ApiError(`Missing required header(s): ${missingHeaders.join(', ')}`, {
+          details: { missingHeaders },
+        });
       }
     }
 
     // Validate Request Body using Standard Schema
     if (!skipRequestValidation && this.config.request && data !== undefined) {
-      await parseOrThrow(this.config.request, data);
+      await parseOrThrow(this.config.request, data, { label: 'Request body' });
     }
 
     // Validate Query Params using Standard Schema
     if (!skipRequestValidation && this.config.query && query !== undefined) {
-      await parseOrThrow(this.config.query, query);
+      await parseOrThrow(this.config.query, query, { label: 'Query parameters' });
     }
 
     // Validate Path Params using Standard Schema
     if (!skipRequestValidation && this.config.pathParams && pathParams !== undefined) {
-      await parseOrThrow(this.config.pathParams, pathParams);
+      await parseOrThrow(this.config.pathParams, pathParams, { label: 'Path parameters' });
     }
 
     // Check for missing required params
     if (this.config.request && data === undefined) {
-      throw new Error('Missing required request body (data)');
+      throw new ApiError('Missing required request body (data)', {
+        details: { missingParam: 'data' },
+      });
     }
     if (this.config.pathParams && pathParams === undefined) {
-      throw new Error('Missing required path parameters (pathParams)');
+      throw new ApiError('Missing required path parameters (pathParams)', {
+        details: { missingParam: 'pathParams' },
+      });
     }
 
     // Resolve Path
     let pathStr: string;
     if (typeof this.config.path === 'function') {
-      if (!pathParams) throw new Error('Path function requires pathParams');
+      if (!pathParams) {
+        throw new ApiError('Path function requires pathParams', {
+          details: { missingParam: 'pathParams' },
+        });
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       pathStr = this.config.path(pathParams as any);
     } else {
@@ -159,7 +170,10 @@ export class EndpointImpl<
 
     if (isStandardSchema(schema)) {
       // Single schema for all success codes
-      return (await parseOrThrow(schema, responseData)) as InferResponse<ResSchema>;
+      return (await parseOrThrow(schema, responseData, {
+        label: `Response body for status ${status}`,
+        status,
+      })) as InferResponse<ResSchema>;
     }
 
     // Map of status codes to schemas
@@ -170,6 +184,9 @@ export class EndpointImpl<
       throw new SchemaDefinitionError(status);
     }
 
-    return (await parseOrThrow(specificSchema, responseData)) as InferResponse<ResSchema>;
+    return (await parseOrThrow(specificSchema, responseData, {
+      label: `Response body for status ${status}`,
+      status,
+    })) as InferResponse<ResSchema>;
   }
 }

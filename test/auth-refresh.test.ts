@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 import { BearerTokenAuth } from '../lib/auth';
 import { HttpClient } from '../lib/http/http-client';
-import { HTTPStatusCode } from '../lib/types';
+import { ApiError, HTTPStatusCode } from '../lib/types';
 
 describe('Auth Refresh Mechanism', () => {
   it('should refresh token and retry request when onUnauthenticated returns true', async () => {
@@ -68,15 +68,14 @@ describe('Auth Refresh Mechanism', () => {
       },
     });
 
-    // Actually, looking at `request` method:
-    // It returns data and status. It catches errors.
-    // So if fetch returns 401, it returns data and status 401.
-    // UNLESS validation fails? The `endpoint` wrapper does validation.
-    // Basic `client.request` does not enforce validation on response unless we use `createEndpoint`.
-    // So `client.get` should return the 401 response.
-
-    const { status } = await client.get('/protected');
-    expect(status).toBe(HTTPStatusCode.UNAUTHORIZED);
+    try {
+      await client.get('/protected');
+      expect(true).toBe(false);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).status).toBe(HTTPStatusCode.UNAUTHORIZED);
+      expect((error as ApiError).details).toEqual({ error: 'Unauthorized' });
+    }
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -99,8 +98,7 @@ describe('Auth Refresh Mechanism', () => {
       },
     });
 
-    const result = await client.get('/protected');
-    expect(result.status).toBe(HTTPStatusCode.UNAUTHORIZED);
+    await expect(client.get('/protected')).rejects.toThrow('Unauthorized');
     expect(callCount).toBe(2); // Initial + 1 retry
   });
 
@@ -190,7 +188,7 @@ describe('Auth Refresh Mechanism', () => {
       },
     });
 
-    await client.get('/protected');
+    await expect(client.get('/protected')).rejects.toThrow('Unauthorized');
     expect(capturedResponse).not.toBeNull();
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
@@ -320,8 +318,7 @@ describe('Auth Refresh Mechanism', () => {
       },
     });
 
-    const { status } = await client.get('/forbidden');
-    expect(status).toBe(HTTPStatusCode.FORBIDDEN);
+    await expect(client.get('/forbidden')).rejects.toThrow('Forbidden');
     expect(onUnauthenticatedCalled).toBe(false);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
@@ -341,9 +338,14 @@ describe('Auth Refresh Mechanism', () => {
       // No onUnauthenticated provided
     });
 
-    const { status, data } = await client.get('/protected');
-    expect(status).toBe(HTTPStatusCode.UNAUTHORIZED);
-    expect(data).toEqual({ error: 'Unauthorized' });
+    try {
+      await client.get('/protected');
+      expect(true).toBe(false);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).status).toBe(HTTPStatusCode.UNAUTHORIZED);
+      expect((error as ApiError).details).toEqual({ error: 'Unauthorized' });
+    }
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 

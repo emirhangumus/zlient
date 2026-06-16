@@ -311,6 +311,8 @@ export type SafeParseResult<T> =
  */
 export class ApiError extends Error {
   public status?: number;
+  public method?: HttpMethod;
+  public url?: string;
   public details?: unknown;
   /** Validation issues from Standard Schema-compatible libraries (Zod, Valibot, ArkType, etc.) */
   public validationIssues?: ReadonlyArray<StandardSchemaV1.Issue>;
@@ -319,6 +321,8 @@ export class ApiError extends Error {
     message: string,
     options?: {
       status?: number;
+      method?: HttpMethod;
+      url?: string;
       cause?: unknown;
       details?: unknown;
       validationIssues?: ReadonlyArray<StandardSchemaV1.Issue>;
@@ -327,6 +331,8 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
     this.status = options?.status;
+    this.method = options?.method;
+    this.url = options?.url;
     this.details = options?.details;
     this.cause = options?.cause;
     this.validationIssues = options?.validationIssues;
@@ -366,6 +372,8 @@ export class ApiError extends Error {
       name: this.name,
       message: this.message,
       status: this.status,
+      method: this.method,
+      url: this.url,
       details: this.details,
       validationIssues: this.validationIssues,
       stack: this.stack,

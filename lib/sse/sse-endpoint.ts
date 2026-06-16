@@ -1,5 +1,6 @@
 import { HttpClient } from '../http/http-client';
 import {
+  ApiError,
   SSEEndpointCall,
   SSEEndpointConfig,
   SSEResponseSchema,
@@ -28,31 +29,39 @@ export class SSEEndpointImpl<
 
       // Validate Request Body using Standard Schema
       if (!skipRequestValidation && this.config.request && data !== undefined) {
-        await parseOrThrow(this.config.request, data);
+        await parseOrThrow(this.config.request, data, { label: 'SSE request body' });
       }
 
       // Validate Query Params using Standard Schema
       if (!skipRequestValidation && this.config.query && query !== undefined) {
-        await parseOrThrow(this.config.query, query);
+        await parseOrThrow(this.config.query, query, { label: 'SSE query parameters' });
       }
 
       // Validate Path Params using Standard Schema
       if (!skipRequestValidation && this.config.pathParams && pathParams !== undefined) {
-        await parseOrThrow(this.config.pathParams, pathParams);
+        await parseOrThrow(this.config.pathParams, pathParams, { label: 'SSE path parameters' });
       }
 
       // Check for missing required params
       if (this.config.request && data === undefined) {
-        throw new Error('Missing required request body (data)');
+        throw new ApiError('Missing required request body (data)', {
+          details: { missingParam: 'data' },
+        });
       }
       if (this.config.pathParams && pathParams === undefined) {
-        throw new Error('Missing required path parameters (pathParams)');
+        throw new ApiError('Missing required path parameters (pathParams)', {
+          details: { missingParam: 'pathParams' },
+        });
       }
 
       // Resolve Path
       let pathStr: string;
       if (typeof this.config.path === 'function') {
-        if (!pathParams) throw new Error('Path function requires pathParams');
+        if (!pathParams) {
+          throw new ApiError('Path function requires pathParams', {
+            details: { missingParam: 'pathParams' },
+          });
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         pathStr = this.config.path(pathParams as any);
       } else {

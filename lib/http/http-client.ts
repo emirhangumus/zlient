@@ -138,6 +138,102 @@ export class HttpClient {
     }
   }
 
+  private getResponseMessage(details: unknown): string | undefined {
+    if (typeof details === 'string') return details.trim() || undefined;
+    if (!details || typeof details !== 'object') return undefined;
+
+    const record = details as Record<string, unknown>;
+    for (const key of ['message', 'error', 'title', 'detail']) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) return value;
+    }
+
+    return undefined;
+  }
+
+  private async parseResponseData(
+    res: Response,
+    method: keyof typeof HTTPMethod,
+    url: string
+  ): Promise<unknown> {
+    if (res.status === 204 || res.status === 205) return undefined;
+
+    const contentType = res.headers.get('content-type') || '';
+
+    try {
+      if (contentType.includes('json')) {
+        const text = await res.text();
+        return text ? JSON.parse(text) : undefined;
+      }
+
+      if (
+        contentType.includes('application/octet-stream') ||
+        contentType.includes('application/pdf') ||
+        contentType.includes('image/') ||
+        contentType.includes('video/') ||
+        contentType.includes('audio/') ||
+        contentType.startsWith('application/zip') ||
+        contentType.startsWith('application/x-')
+      ) {
+        // Return binary data as Blob for file downloads
+        return await res.blob();
+      }
+
+      return await res.text();
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new ApiError(
+        `Failed to parse response body from ${method} ${url} (status ${res.status}): ${reason}`,
+        {
+          status: res.status,
+          method,
+          url,
+          cause: error,
+          details: { contentType },
+        }
+      );
+    }
+  }
+
+  private createStatusError(
+    method: keyof typeof HTTPMethod,
+    url: string,
+    res: Response,
+    details: unknown
+  ) {
+    const statusText = res.statusText ? ` ${res.statusText}` : '';
+    const responseMessage = this.getResponseMessage(details);
+    const suffix = responseMessage ? `: ${responseMessage}` : '';
+
+    return new ApiError(
+      `Request failed: ${method} ${url} returned ${res.status}${statusText}${suffix}`,
+      {
+        status: res.status,
+        method,
+        url,
+        details,
+      }
+    );
+  }
+
+  private createNetworkError(method: keyof typeof HTTPMethod, url: string, error: unknown) {
+    if (error instanceof ApiError) return error;
+
+    const reason = error instanceof Error ? error.message : String(error);
+    const name = error instanceof Error ? error.name : 'Error';
+    const isAbort = name === 'AbortError' || name === 'TimeoutError';
+
+    return new ApiError(
+      `${isAbort ? 'Request aborted' : 'Network request failed'}: ${method} ${url}: ${reason}`,
+      {
+        method,
+        url,
+        cause: error,
+        details: error && typeof error === 'object' ? { name } : undefined,
+      }
+    );
+  }
+
   /**
    * Get all configured base URLs.
    *
@@ -277,7 +373,12 @@ export class HttpClient {
 
           const req = new Request(url, init);
 
-          const res = await this.fetchImpl(req);
+          let res: Response;
+          try {
+            res = await this.fetchImpl(req);
+          } catch (error) {
+            throw this.createNetworkError(method, url, error);
+          }
 
           if (res.status === 401 && this.onUnauthenticated && !refreshAttempted) {
             const shouldRetry = await this.onUnauthenticated(res.clone() as unknown as Response);
@@ -290,7 +391,6 @@ export class HttpClient {
           }
 
           const status = res.status as HTTPStatusCodeNumber;
-          const contentType = res.headers.get('content-type') || '';
 
           // Check for errors first
           if (!res.ok) {
@@ -337,25 +437,13 @@ export class HttpClient {
           }
 
           // Handle different response types appropriately
-          let data: any;
-          if (contentType.includes('json')) {
-            data = await res.json();
-          } else if (
-            contentType.includes('application/octet-stream') ||
-            contentType.includes('application/pdf') ||
-            contentType.includes('image/') ||
-            contentType.includes('video/') ||
-            contentType.includes('audio/') ||
-            contentType.startsWith('application/zip') ||
-            contentType.startsWith('application/x-')
-          ) {
-            // Return binary data as Blob for file downloads
-            data = await res.blob();
-          } else {
-            data = await res.text();
-          }
+          const data = await this.parseResponseData(res, method, url);
 
           await this.runAfterHooks(new Request(url, init), res, data);
+
+          if (!res.ok) {
+            throw this.createStatusError(method, url, res, data);
+          }
 
           const duration = Date.now() - startTime;
           this.logger.info('HTTP request successful', {

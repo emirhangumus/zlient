@@ -16,6 +16,7 @@ import { describe, expect, it, mock } from 'bun:test';
 import { z } from 'zod';
 import { ApiKeyAuth, BearerTokenAuth } from '../lib/auth';
 import { HttpClient } from '../lib/http/http-client';
+import { ApiError } from '../lib/types';
 
 describe('Advanced Features and Edge Cases', () => {
   describe('Interceptor Chain Complexity', () => {
@@ -530,10 +531,17 @@ describe('Advanced Features and Edge Cases', () => {
         fetch: mockFetch as any,
       });
 
-      const { data, status } = await client.get('/test');
-
-      expect(status).toBe(400);
-      expect(data).toEqual({ code: 'VALIDATION_ERROR', message: 'Invalid input' });
+      try {
+        await client.get('/test');
+        expect(true).toBe(false);
+      } catch (error) {
+        expect(error).toBeInstanceOf(ApiError);
+        expect((error as ApiError).status).toBe(400);
+        expect((error as ApiError).details).toEqual({
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid input',
+        });
+      }
     });
 
     it('should handle error response with plain text body', async () => {
@@ -551,10 +559,14 @@ describe('Advanced Features and Edge Cases', () => {
         fetch: mockFetch as any,
       });
 
-      const { data, status } = await client.get('/test');
-
-      expect(status).toBe(500);
-      expect(data).toBe('Internal Server Error');
+      try {
+        await client.get('/test');
+        expect(true).toBe(false);
+      } catch (error) {
+        expect(error).toBeInstanceOf(ApiError);
+        expect((error as ApiError).status).toBe(500);
+        expect((error as ApiError).details).toBe('Internal Server Error');
+      }
     });
 
     it('should handle empty response body', async () => {

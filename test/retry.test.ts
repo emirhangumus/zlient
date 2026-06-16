@@ -64,9 +64,7 @@ describe('Retry Logic', () => {
         retry: { maxAttempts: 0, baseDelayMs: 1000 },
       });
 
-      const { status } = await client.get('/test');
-
-      expect(status).toBe(500);
+      await expect(client.get('/test')).rejects.toThrow('Server Error');
       expect(callCount).toBe(1);
     });
 
@@ -125,9 +123,7 @@ describe('Retry Logic', () => {
         },
       });
 
-      const { status } = await client.get('/test');
-
-      expect(status).toBe(404);
+      await expect(client.get('/test')).rejects.toThrow('Not Found');
       expect(callCount).toBe(1);
     });
 
@@ -152,9 +148,7 @@ describe('Retry Logic', () => {
         },
       });
 
-      const { status } = await client.post('/test', { data: 'test' });
-
-      expect(status).toBe(500);
+      await expect(client.post('/test', { data: 'test' })).rejects.toThrow('Server Error');
       expect(callCount).toBe(1);
     });
   });
@@ -232,9 +226,7 @@ describe('Retry Logic', () => {
         },
       });
 
-      const { status } = await client.get('/test');
-
-      expect(status).toBe(500);
+      await expect(client.get('/test')).rejects.toThrow('Server Error');
       expect(callCount).toBe(3); // Initial + 2 retries
     });
   });
@@ -400,9 +392,7 @@ describe('Retry Logic', () => {
         },
       });
 
-      const { status } = await client.get('/test', { skipRetry: true });
-
-      expect(status).toBe(500);
+      await expect(client.get('/test', { skipRetry: true })).rejects.toThrow('Server Error');
       expect(callCount).toBe(1); // Should not retry
     });
 
@@ -435,7 +425,7 @@ describe('Retry Logic', () => {
         advanced: { skipRetry: true, skipResponseValidation: true },
       });
 
-      await createItem({});
+      await expect(createItem({})).rejects.toThrow('Server Error');
 
       expect(callCount).toBe(1); // Should not retry
     });
@@ -499,9 +489,7 @@ describe('Retry Logic', () => {
         },
       });
 
-      const { status } = await client.get('/test');
-
-      expect(status).toBe(400);
+      await expect(client.get('/test')).rejects.toThrow('Bad Request');
       expect(callCount).toBe(1);
     });
 
@@ -928,8 +916,7 @@ describe('Retry Logic', () => {
         },
       });
 
-      const { status, data } = await client.get('/test');
-
+      await expect(client.get('/test')).rejects.toThrow('Error');
       expect(callCount).toBe(1); // No retries needed
     });
   });
@@ -984,9 +971,7 @@ describe('Retry Logic', () => {
         },
       });
 
-      const { status } = await client.get('/test');
-
-      expect(status).toBe(500);
+      await expect(client.get('/test')).rejects.toThrow('Persistent error');
       expect(callCount).toBe(4); // Initial + 3 retries
     });
 
@@ -1020,9 +1005,7 @@ describe('Retry Logic', () => {
         },
       });
 
-      const { status } = await client.get('/test');
-
-      expect(status).toBe(400); // Should stop at 400 (not in retryStatusCodes)
+      await expect(client.get('/test')).rejects.toThrow('Bad Request');
       expect(callCount).toBe(2);
     });
   });

@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { BearerTokenAuth, NoAuth } from '../lib/auth';
 import { HttpClient } from '../lib/http/http-client';
 import { InMemoryMetricsCollector } from '../lib/metrics';
-import { HTTPStatusCode } from '../lib/types';
+import { ApiError, HTTPStatusCode } from '../lib/types';
 import { isStandardSchema } from '../lib/validation';
 
 describe('Edge Cases and Error Recovery', () => {
@@ -573,9 +573,13 @@ describe('Edge Cases and Error Recovery', () => {
       expect((results[3] as PromiseFulfilledResult<any>).value.status).toBe(200);
 
       // Check odd IDs failed
-      expect((results[0] as PromiseFulfilledResult<any>).value.status).toBe(404);
-      expect((results[2] as PromiseFulfilledResult<any>).value.status).toBe(404);
-      expect((results[4] as PromiseFulfilledResult<any>).value.status).toBe(404);
+      expect(results[0].status).toBe('rejected');
+      expect((results[0] as PromiseRejectedResult).reason).toBeInstanceOf(ApiError);
+      expect((results[0] as PromiseRejectedResult).reason.status).toBe(404);
+      expect(results[2].status).toBe('rejected');
+      expect((results[2] as PromiseRejectedResult).reason.status).toBe(404);
+      expect(results[4].status).toBe('rejected');
+      expect((results[4] as PromiseRejectedResult).reason.status).toBe(404);
     });
   });
 

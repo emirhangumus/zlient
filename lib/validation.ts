@@ -1,5 +1,37 @@
 import { ApiError, SafeParseResult, StandardSchemaV1 } from './types';
 
+export type ValidationContext = {
+  label?: string;
+  status?: number;
+  method?: ApiError['method'];
+  url?: string;
+  details?: unknown;
+};
+
+function formatPath(path?: ReadonlyArray<PropertyKey | StandardSchemaV1.PathSegment>): string {
+  if (!path || path.length === 0) return '';
+
+  return path
+    .map((segment) => {
+      const key = typeof segment === 'object' && segment !== null ? segment.key : segment;
+      return typeof key === 'symbol' ? key.toString() : String(key);
+    })
+    .join('.');
+}
+
+export function formatValidationIssues(
+  issues: ReadonlyArray<StandardSchemaV1.Issue>,
+  maxIssues = 3
+): string {
+  return issues
+    .slice(0, maxIssues)
+    .map((issue) => {
+      const path = formatPath(issue.path);
+      return path ? `${path}: ${issue.message}` : issue.message;
+    })
+    .join('; ');
+}
+
 /**
  * Safely parse/validate data with any Standard Schema-compatible library (Zod, Valibot, ArkType, etc.).
  * Returns a result object with success status and data or issues.
@@ -66,13 +98,20 @@ export async function safeParse<T extends StandardSchemaV1>(
  */
 export async function parseOrThrow<T extends StandardSchemaV1>(
   schema: T,
-  data: unknown
+  data: unknown,
+  context: ValidationContext = {}
 ): Promise<StandardSchemaV1.InferOutput<T>> {
   const result = await schema['~standard'].validate(data);
 
   if (result.issues) {
-    const messages = result.issues.map((issue) => issue.message).join(', ');
-    throw new ApiError(`Validation failed: ${messages}`, {
+    const messages = formatValidationIssues(result.issues);
+    const issueCount = result.issues.length > 3 ? ` (${result.issues.length} issues total)` : '';
+    const prefix = context.label ? `${context.label} validation failed` : 'Validation failed';
+    throw new ApiError(`${prefix}: ${messages}${issueCount}`, {
+      status: context.status,
+      method: context.method,
+      url: context.url,
+      details: context.details,
       validationIssues: result.issues,
     });
   }

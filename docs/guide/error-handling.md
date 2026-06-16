@@ -25,9 +25,14 @@ try {
 
     // Original status code
     console.log(err.status); // e.g. 404
+    console.log(err.method); // e.g. "GET"
+    console.log(err.url); // e.g. "https://api.example.com/users/123"
+    console.log(err.details); // Parsed error response body when available
   }
 }
 ```
+
+For HTTP status errors, the message includes the request method, URL, status code, status text, and a server-provided `message`, `error`, `title`, or `detail` field when present. The parsed response body is available on `err.details`.
 
 ## Validation Errors
 
