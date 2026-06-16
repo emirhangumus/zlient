@@ -1,6 +1,16 @@
 import { HttpClient } from '../http/http-client';
-import { StandardSchemaV1, toQueryString, WSEndpointCall, WSEndpointConfig } from '../types';
+import {
+  StandardSchemaV1,
+  toQueryString,
+  toRequestQuery,
+  WSEndpointCall,
+  WSEndpointConfig,
+} from '../types';
 import { WSConnectionImpl } from './ws-client';
+
+type InferPathInput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferInput<S>
+  : never;
 
 export class WSEndpointImpl<
   SendSchema extends StandardSchemaV1 | undefined,
@@ -13,7 +23,6 @@ export class WSEndpointImpl<
     private config: WSEndpointConfig<SendSchema, ReceiveSchema, QuerySchema, PathSchema>
   ) {}
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createCall(): WSEndpointCall<SendSchema, ReceiveSchema, QuerySchema, PathSchema> {
     return (params) => {
       const { query, pathParams, protocols } = params || {};
@@ -22,8 +31,7 @@ export class WSEndpointImpl<
       let pathStr: string;
       if (typeof this.config.path === 'function') {
         if (!pathParams) throw new Error('Path function requires pathParams');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        pathStr = this.config.path(pathParams as any);
+        pathStr = this.config.path(pathParams as InferPathInput<PathSchema>);
       } else {
         pathStr = this.config.path;
       }
@@ -31,7 +39,7 @@ export class WSEndpointImpl<
       const baseUrl = this.client.getBaseUrl(this.config.advanced?.baseUrlKey || 'default');
       // Convert http/https to ws/wss if necessary
       const wsBaseUrl = baseUrl.replace(/^http/, 'ws');
-      const url = `${wsBaseUrl}${pathStr}${toQueryString(query as any)}`;
+      const url = `${wsBaseUrl}${pathStr}${toQueryString(toRequestQuery(query))}`;
 
       return new WSConnectionImpl<SendSchema, ReceiveSchema>(
         url,

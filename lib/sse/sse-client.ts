@@ -3,11 +3,13 @@ import { LoggerUtil } from '../logger';
 import { HttpMethod, SSEConnection, SSEResponseSchema, StandardSchemaV1 } from '../types';
 import { parseOrThrow } from '../validation';
 
+type EventHandler = (...args: unknown[]) => void;
+
 export interface SSEConnectionOptions {
   skipResponseValidation?: boolean;
   withCredentials?: boolean;
   method?: HttpMethod;
-  data?: any;
+  data?: unknown;
   headers?: Record<string, string>;
   signal?: AbortSignal;
   auth?: AuthProvider;
@@ -18,7 +20,7 @@ export class SSEConnectionImpl<
   ResSchema extends SSEResponseSchema | undefined,
 > implements SSEConnection<ResSchema> {
   private abortController: AbortController = new AbortController();
-  private handlers: Map<string, Set<Function>> = new Map();
+  private handlers: Map<string, Set<EventHandler>> = new Map();
   private _readyState: number = 0; // 0: CONNECTING, 1: OPEN, 2: CLOSED
 
   constructor(
@@ -42,12 +44,14 @@ export class SSEConnectionImpl<
       } = this.options;
       let url = this.url;
 
+      const requestHeaders: Record<string, string> = {
+        Accept: 'text/event-stream',
+        ...headers,
+      };
+
       const init: RequestInit & { __urlOverride?: string } = {
         method,
-        headers: {
-          Accept: 'text/event-stream',
-          ...headers,
-        },
+        headers: requestHeaders,
         signal: signal || this.abortController.signal,
       };
 
@@ -64,8 +68,8 @@ export class SSEConnectionImpl<
 
       if (data) {
         init.body = typeof data === 'object' ? JSON.stringify(data) : String(data);
-        if (!init.headers || !('Content-Type' in (init.headers as any))) {
-          (init.headers as any)['Content-Type'] = 'application/json';
+        if (!('Content-Type' in requestHeaders)) {
+          requestHeaders['Content-Type'] = 'application/json';
         }
       }
 
@@ -217,7 +221,7 @@ export class SSEConnectionImpl<
   }
 
   private async handleEvent(event: string, data: string) {
-    let parsedData: any = data;
+    let parsedData: unknown = data;
     try {
       if (typeof data === 'string' && data.length > 0) {
         try {
@@ -255,21 +259,21 @@ export class SSEConnectionImpl<
     return (this.responseSchema as Record<string, StandardSchemaV1>)[event];
   }
 
-  on(event: string, handler: Function): void {
+  on(event: string, handler: EventHandler): void {
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Set());
     }
     this.handlers.get(event)!.add(handler);
   }
 
-  off(event: string, handler: Function): void {
+  off(event: string, handler: EventHandler): void {
     const handlers = this.handlers.get(event);
     if (handlers) {
       handlers.delete(handler);
     }
   }
 
-  private emit(event: string, ...args: any[]): void {
+  private emit(event: string, ...args: unknown[]): void {
     const handlers = this.handlers.get(event);
     if (handlers) {
       handlers.forEach((handler) => handler(...args));

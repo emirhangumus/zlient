@@ -5,6 +5,7 @@ import {
   SchemaDefinitionError,
   SchemaMap,
   StandardSchemaV1,
+  toRequestQuery,
 } from '../types';
 import { isStandardSchema, parseOrThrow } from '../validation';
 import { HttpClient } from './http-client';
@@ -63,6 +64,14 @@ type InferResponse<S> = S extends StandardSchemaV1
       }[keyof S]
     : never;
 
+type InferPathOutput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<S>
+  : never;
+
+type InferQueryOutput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<S>
+  : undefined;
+
 export type EndpointCall<
   ResSchema extends ResponseSchema,
   ReqSchema extends StandardSchemaV1 | undefined,
@@ -112,14 +121,18 @@ export class EndpointImpl<
     }
 
     // Validate Query Params using Standard Schema
-    if (!skipRequestValidation && this.config.query && query !== undefined) {
-      await parseOrThrow(this.config.query, query, { label: 'Query parameters' });
-    }
+    const parsedQuery = (
+      !skipRequestValidation && this.config.query && query !== undefined
+        ? await parseOrThrow(this.config.query, query, { label: 'Query parameters' })
+        : query
+    ) as InferQueryOutput<QuerySchema>;
 
     // Validate Path Params using Standard Schema
-    if (!skipRequestValidation && this.config.pathParams && pathParams !== undefined) {
-      await parseOrThrow(this.config.pathParams, pathParams, { label: 'Path parameters' });
-    }
+    const parsedPathParams = (
+      !skipRequestValidation && this.config.pathParams && pathParams !== undefined
+        ? await parseOrThrow(this.config.pathParams, pathParams, { label: 'Path parameters' })
+        : pathParams
+    ) as InferPathOutput<PathSchema> | undefined;
 
     // Check for missing required params
     if (this.config.request && data === undefined) {
@@ -141,8 +154,7 @@ export class EndpointImpl<
           details: { missingParam: 'pathParams' },
         });
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      pathStr = this.config.path(pathParams as any);
+      pathStr = this.config.path(parsedPathParams as InferPathOutput<PathSchema>);
     } else {
       pathStr = this.config.path;
     }
@@ -152,8 +164,7 @@ export class EndpointImpl<
       pathStr,
       data,
       {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        query: query as any,
+        query: toRequestQuery(parsedQuery),
         headers,
         baseUrlKey: this.config.advanced?.baseUrlKey,
         skipAuth: this.config.advanced?.skipAuth,

@@ -1,12 +1,15 @@
 import { WSConnection, StandardSchemaV1 } from '../types';
 import { parseOrThrow } from '../validation';
 
+type EventHandler = (...args: unknown[]) => void;
+type RegisteredHandler = (...args: never[]) => void;
+
 export class WSConnectionImpl<
   SendSchema extends StandardSchemaV1 | undefined,
   ReceiveSchema extends StandardSchemaV1 | undefined,
 > implements WSConnection<SendSchema, ReceiveSchema> {
   private ws: WebSocket;
-  private handlers: Map<string, Set<Function>> = new Map();
+  private handlers: Map<string, Set<EventHandler>> = new Map();
 
   constructor(
     url: string,
@@ -46,31 +49,49 @@ export class WSConnectionImpl<
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async send(data: any): Promise<void> {
+  async send(
+    data: SendSchema extends StandardSchemaV1 ? StandardSchemaV1.InferInput<SendSchema> : unknown
+  ): Promise<void> {
     if (!this.skipRequestValidation && this.sendSchema) {
       await parseOrThrow(this.sendSchema, data);
     }
 
-    const message = data != null && typeof data === 'object' ? JSON.stringify(data) : data;
+    const message =
+      data != null && typeof data === 'object'
+        ? JSON.stringify(data)
+        : typeof data === 'string'
+          ? data
+          : String(data);
     this.ws.send(message);
   }
 
-  on(event: string, handler: Function): void {
+  on(
+    event: 'message',
+    handler: (
+      data: ReceiveSchema extends StandardSchemaV1
+        ? StandardSchemaV1.InferOutput<ReceiveSchema>
+        : unknown
+    ) => void
+  ): void;
+  on(event: 'open', handler: () => void): void;
+  on(event: 'close', handler: (event: CloseEvent) => void): void;
+  on(event: 'error', handler: (event: unknown) => void): void;
+  on(event: string, handler: (data: unknown) => void): void;
+  on(event: string, handler: RegisteredHandler): void {
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Set());
     }
-    this.handlers.get(event)!.add(handler);
+    this.handlers.get(event)!.add(handler as EventHandler);
   }
 
-  off(event: string, handler: Function): void {
+  off(event: string, handler: RegisteredHandler): void {
     const handlers = this.handlers.get(event);
     if (handlers) {
-      handlers.delete(handler);
+      handlers.delete(handler as EventHandler);
     }
   }
 
-  private emit(event: string, ...args: any[]): void {
+  private emit(event: string, ...args: unknown[]): void {
     const handlers = this.handlers.get(event);
     if (handlers) {
       handlers.forEach((handler) => handler(...args));

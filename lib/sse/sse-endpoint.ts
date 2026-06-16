@@ -6,9 +6,18 @@ import {
   SSEResponseSchema,
   StandardSchemaV1,
   toQueryString,
+  toRequestQuery,
 } from '../types';
 import { parseOrThrow } from '../validation';
 import { SSEConnectionImpl } from './sse-client';
+
+type InferPathOutput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<S>
+  : never;
+
+type InferQueryOutput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<S>
+  : undefined;
 
 export class SSEEndpointImpl<
   ResSchema extends SSEResponseSchema | undefined,
@@ -33,14 +42,18 @@ export class SSEEndpointImpl<
       }
 
       // Validate Query Params using Standard Schema
-      if (!skipRequestValidation && this.config.query && query !== undefined) {
-        await parseOrThrow(this.config.query, query, { label: 'SSE query parameters' });
-      }
+      const parsedQuery = (
+        !skipRequestValidation && this.config.query && query !== undefined
+          ? await parseOrThrow(this.config.query, query, { label: 'SSE query parameters' })
+          : query
+      ) as InferQueryOutput<QuerySchema>;
 
       // Validate Path Params using Standard Schema
-      if (!skipRequestValidation && this.config.pathParams && pathParams !== undefined) {
-        await parseOrThrow(this.config.pathParams, pathParams, { label: 'SSE path parameters' });
-      }
+      const parsedPathParams = (
+        !skipRequestValidation && this.config.pathParams && pathParams !== undefined
+          ? await parseOrThrow(this.config.pathParams, pathParams, { label: 'SSE path parameters' })
+          : pathParams
+      ) as InferPathOutput<PathSchema> | undefined;
 
       // Check for missing required params
       if (this.config.request && data === undefined) {
@@ -62,14 +75,13 @@ export class SSEEndpointImpl<
             details: { missingParam: 'pathParams' },
           });
         }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        pathStr = this.config.path(pathParams as any);
+        pathStr = this.config.path(parsedPathParams as InferPathOutput<PathSchema>);
       } else {
         pathStr = this.config.path;
       }
 
       const baseUrl = this.client.getBaseUrl(this.config.advanced?.baseUrlKey || 'default');
-      const url = `${baseUrl}${pathStr}${toQueryString(query as any)}`;
+      const url = `${baseUrl}${pathStr}${toQueryString(toRequestQuery(parsedQuery))}`;
 
       return new SSEConnectionImpl<ResSchema>(url, this.config.response, {
         skipResponseValidation: this.config.advanced?.skipResponseValidation,
