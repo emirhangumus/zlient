@@ -344,7 +344,7 @@ export class HttpClient {
       // Loop for potential token refresh retry
       while (true) {
         // Apply timeout if configured
-        let timeoutId: NodeJS.Timeout | number | undefined;
+        let timeoutId: number | undefined;
         if (this.timeoutMs && !options?.signal) {
           timeoutId = setTimeout(() => {
             const timeoutError = new Error('Request timeout');
