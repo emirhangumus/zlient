@@ -1,7 +1,7 @@
+import { EventHandler, parseRealtimeData, serializeRealtimeData } from '../realtime-utils';
 import { WSConnection, StandardSchemaV1 } from '../types';
 import { parseOrThrow } from '../validation';
 
-type EventHandler = (...args: unknown[]) => void;
 type RegisteredHandler = (...args: never[]) => void;
 
 export class WSConnectionImpl<
@@ -29,16 +29,8 @@ export class WSConnectionImpl<
     this.ws.onclose = (event) => this.emit('close', event);
     this.ws.onerror = (event) => this.emit('error', event);
     this.ws.onmessage = async (event) => {
-      let data = event.data;
+      let data = parseRealtimeData(event.data);
       try {
-        if (typeof data === 'string') {
-          try {
-            data = JSON.parse(data);
-          } catch {
-            // Not JSON, keep as string
-          }
-        }
-
         if (!this.skipResponseValidation && this.receiveSchema) {
           data = await parseOrThrow(this.receiveSchema, data);
         }
@@ -56,13 +48,7 @@ export class WSConnectionImpl<
       await parseOrThrow(this.sendSchema, data);
     }
 
-    const message =
-      data != null && typeof data === 'object'
-        ? JSON.stringify(data)
-        : typeof data === 'string'
-          ? data
-          : String(data);
-    this.ws.send(message);
+    this.ws.send(serializeRealtimeData(data));
   }
 
   on(

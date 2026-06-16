@@ -119,6 +119,50 @@ describe('WebSocket Support', () => {
     socket.on('error', (err) => done(err));
   });
 
+  it('should validate path parameters before connecting', () => {
+    const roomWs = client.createWebSocket({
+      path: (params) => `/rooms/${params.id}`,
+      pathParams: z.object({ id: z.string() }),
+      receive: z.any(),
+    });
+
+    expect(() => roomWs({ pathParams: { id: 123 as any } })).toThrow(ApiError);
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  it('should validate query parameters before connecting', () => {
+    const roomWs = client.createWebSocket({
+      path: '/rooms',
+      query: z.object({ token: z.string() }),
+      receive: z.any(),
+    });
+
+    expect(() => roomWs({ query: { token: 123 as any } })).toThrow(ApiError);
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  it('should skip endpoint request validation when configured', (done) => {
+    const roomWs = client.createWebSocket({
+      path: (params) => `/rooms/${params.id}`,
+      pathParams: z.object({ id: z.string() }),
+      query: z.object({ token: z.string() }),
+      receive: z.any(),
+      advanced: { skipRequestValidation: true },
+    });
+
+    const socket = roomWs({
+      pathParams: { id: 123 as any },
+      query: { token: 456 as any },
+    });
+
+    socket.on('open', () => {
+      expect(FakeWebSocket.instances[0].url).toBe('ws://localhost:3001/rooms/123?token=456');
+      socket.close();
+      done();
+    });
+    socket.on('error', (err) => done(err));
+  });
+
   it('should throw validation error on invalid send', async () => {
     const validatedWs = client.createWebSocket({
       path: '/chat',

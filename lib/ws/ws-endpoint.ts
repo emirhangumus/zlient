@@ -1,3 +1,4 @@
+import { parseEndpointValueSync, resolveEndpointPath } from '../endpoint-utils';
 import { HttpClient } from '../http/http-client';
 import {
   StandardSchemaV1,
@@ -11,6 +12,10 @@ import { WSConnectionImpl } from './ws-client';
 type InferPathInput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
   ? StandardSchemaV1.InferInput<S>
   : never;
+
+type InferQueryOutput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<S>
+  : undefined;
 
 export class WSEndpointImpl<
   SendSchema extends StandardSchemaV1 | undefined,
@@ -26,15 +31,27 @@ export class WSEndpointImpl<
   createCall(): WSEndpointCall<SendSchema, ReceiveSchema, QuerySchema, PathSchema> {
     return (params) => {
       const { query, pathParams, protocols } = params || {};
+      const skipRequestValidation = this.config.advanced?.skipRequestValidation ?? false;
 
-      // Resolve Path
-      let pathStr: string;
-      if (typeof this.config.path === 'function') {
-        if (!pathParams) throw new Error('Path function requires pathParams');
-        pathStr = this.config.path(pathParams as InferPathInput<PathSchema>);
-      } else {
-        pathStr = this.config.path;
-      }
+      parseEndpointValueSync(
+        this.config.query,
+        query,
+        skipRequestValidation,
+        'WebSocket query parameters'
+      ) as InferQueryOutput<QuerySchema>;
+
+      parseEndpointValueSync(
+        this.config.pathParams,
+        pathParams,
+        skipRequestValidation,
+        'WebSocket path parameters'
+      );
+
+      const pathStr = resolveEndpointPath(
+        this.config.path,
+        pathParams,
+        pathParams as InferPathInput<PathSchema>
+      );
 
       const baseUrl = this.client.getBaseUrl(this.config.advanced?.baseUrlKey || 'default');
       // Convert http/https to ws/wss if necessary

@@ -1,5 +1,5 @@
 import { ApiError, StandardSchemaV1 } from './types';
-import { parseOrThrow } from './validation';
+import { formatValidationIssues, parseOrThrow } from './validation';
 
 export function validateRequiredHeaders(
   mustHeaderKeys: readonly string[] | undefined,
@@ -24,6 +24,31 @@ export async function parseEndpointValue(
   if (skipValidation || !schema || value === undefined) return value;
 
   return parseOrThrow(schema, value, { label });
+}
+
+export function parseEndpointValueSync(
+  schema: StandardSchemaV1 | undefined,
+  value: unknown,
+  skipValidation: boolean,
+  label: string
+): unknown {
+  if (skipValidation || !schema || value === undefined) return value;
+
+  const result = schema['~standard'].validate(value);
+  if (result instanceof Promise) {
+    void result.catch(() => undefined);
+    return value;
+  }
+
+  if (result.issues) {
+    const messages = formatValidationIssues(result.issues);
+    const issueCount = result.issues.length > 3 ? ` (${result.issues.length} issues total)` : '';
+    throw new ApiError(`${label} validation failed: ${messages}${issueCount}`, {
+      validationIssues: result.issues,
+    });
+  }
+
+  return result.value;
 }
 
 export function assertRequiredEndpointValue(

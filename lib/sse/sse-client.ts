@@ -1,9 +1,8 @@
 import { AuthProvider } from '../auth';
 import { LoggerUtil } from '../logger';
+import { EventHandler, parseRealtimeData } from '../realtime-utils';
 import { HttpMethod, SSEConnection, SSEResponseSchema, StandardSchemaV1 } from '../types';
 import { parseOrThrow } from '../validation';
-
-type EventHandler = (...args: unknown[]) => void;
 
 export interface SSEConnectionOptions {
   skipResponseValidation?: boolean;
@@ -221,23 +220,8 @@ export class SSEConnectionImpl<
   }
 
   private async handleEvent(event: string, data: string) {
-    let parsedData: unknown = data;
+    let parsedData = parseRealtimeData(data);
     try {
-      if (typeof data === 'string' && data.length > 0) {
-        try {
-          // Only attempt JSON parse if it looks like it could be JSON
-          if (
-            (data.startsWith('{') && data.endsWith('}')) ||
-            (data.startsWith('[') && data.endsWith(']')) ||
-            (data.startsWith('"') && data.endsWith('"'))
-          ) {
-            parsedData = JSON.parse(data);
-          }
-        } catch {
-          // Not JSON or parse failed, keep as string
-        }
-      }
-
       const schema = this.getSchema(event);
       if (!this.options.skipResponseValidation && schema) {
         parsedData = await parseOrThrow(schema, parsedData);
