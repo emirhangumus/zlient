@@ -297,6 +297,14 @@ export type SafeParseResult<T> =
   | { success: true; data: T }
   | { success: false; issues: ReadonlyArray<StandardSchemaV1.Issue> };
 
+type ErrorConstructorWithStackTrace = ErrorConstructor & {
+  captureStackTrace?: (targetObject: object, constructorOpt?: object) => void;
+};
+
+function captureStackTrace(targetObject: object, constructorOpt: object) {
+  (Error as ErrorConstructorWithStackTrace).captureStackTrace?.(targetObject, constructorOpt);
+}
+
 /**
  * Custom error class for API-related errors.
  * Includes HTTP status codes, response details, and validation errors.
@@ -314,6 +322,7 @@ export class ApiError extends Error {
   public method?: HttpMethod;
   public url?: string;
   public details?: unknown;
+  public cause?: unknown;
   /** Validation issues from Standard Schema-compatible libraries (Zod, Valibot, ArkType, etc.) */
   public validationIssues?: ReadonlyArray<StandardSchemaV1.Issue>;
 
@@ -338,9 +347,7 @@ export class ApiError extends Error {
     this.validationIssues = options?.validationIssues;
 
     // Maintains proper stack trace for where error was thrown
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, ApiError);
-    }
+    captureStackTrace(this, ApiError);
   }
 
   /**
@@ -391,9 +398,7 @@ export class SchemaDefinitionError extends Error {
     this.name = 'SchemaDefinitionError';
 
     // Maintains proper stack trace
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, SchemaDefinitionError);
-    }
+    captureStackTrace(this, SchemaDefinitionError);
   }
 }
 
