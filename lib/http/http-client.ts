@@ -4,7 +4,6 @@ import { LoggerUtil, NoOpLogger } from '../logger';
 import { MetricsCollector, NoOpMetricsCollector } from '../metrics';
 import { SSEEndpointImpl } from '../sse/sse-endpoint';
 import {
-  ApiError,
   ClientOptions,
   FetchLike,
   HTTPMethod,
@@ -23,6 +22,19 @@ import {
 } from '../types';
 import { WSEndpointImpl } from '../ws/ws-endpoint';
 import { EndpointCall, EndpointConfig, EndpointImpl } from './http-endpoint';
+import type { RequestInitWithUrlOverride } from './request-utils';
+import {
+  createNetworkError,
+  createStatusError,
+  getRetryDelay,
+  isRetryableResponse,
+  parseResponseData,
+  recordFailedRequest,
+  recordSuccessfulRequest,
+  reapplyAuthHeaders,
+  startRequestTimeout,
+  serializeRequestBody,
+} from './request-utils';
 
 /**
  * HTTP client with built-in authentication, and interceptors.
@@ -122,7 +134,7 @@ export class HttpClient {
    * Run all registered before-request hooks.
    * @private
    */
-  private async runBeforeHooks(url: string, init: RequestInit & { __urlOverride?: string }) {
+  private async runBeforeHooks(url: string, init: RequestInitWithUrlOverride) {
     for (const h of this.interceptors.beforeRequest ?? []) {
       await h({ url, init });
     }
@@ -136,102 +148,6 @@ export class HttpClient {
     for (const h of this.interceptors.afterResponse ?? []) {
       await h({ request: req, response: res, parsed });
     }
-  }
-
-  private getResponseMessage(details: unknown): string | undefined {
-    if (typeof details === 'string') return details.trim() || undefined;
-    if (!details || typeof details !== 'object') return undefined;
-
-    const record = details as Record<string, unknown>;
-    for (const key of ['message', 'error', 'title', 'detail']) {
-      const value = record[key];
-      if (typeof value === 'string' && value.trim()) return value;
-    }
-
-    return undefined;
-  }
-
-  private async parseResponseData(
-    res: Response,
-    method: keyof typeof HTTPMethod,
-    url: string
-  ): Promise<unknown> {
-    if (res.status === 204 || res.status === 205) return undefined;
-
-    const contentType = res.headers.get('content-type') || '';
-
-    try {
-      if (contentType.includes('json')) {
-        const text = await res.text();
-        return text ? JSON.parse(text) : undefined;
-      }
-
-      if (
-        contentType.includes('application/octet-stream') ||
-        contentType.includes('application/pdf') ||
-        contentType.includes('image/') ||
-        contentType.includes('video/') ||
-        contentType.includes('audio/') ||
-        contentType.startsWith('application/zip') ||
-        contentType.startsWith('application/x-')
-      ) {
-        // Return binary data as Blob for file downloads
-        return await res.blob();
-      }
-
-      return await res.text();
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new ApiError(
-        `Failed to parse response body from ${method} ${url} (status ${res.status}): ${reason}`,
-        {
-          status: res.status,
-          method,
-          url,
-          cause: error,
-          details: { contentType },
-        }
-      );
-    }
-  }
-
-  private createStatusError(
-    method: keyof typeof HTTPMethod,
-    url: string,
-    res: Response,
-    details: unknown
-  ) {
-    const statusText = res.statusText ? ` ${res.statusText}` : '';
-    const responseMessage = this.getResponseMessage(details);
-    const suffix = responseMessage ? `: ${responseMessage}` : '';
-
-    return new ApiError(
-      `Request failed: ${method} ${url} returned ${res.status}${statusText}${suffix}`,
-      {
-        status: res.status,
-        method,
-        url,
-        details,
-      }
-    );
-  }
-
-  private createNetworkError(method: keyof typeof HTTPMethod, url: string, error: unknown) {
-    if (error instanceof ApiError) return error;
-
-    const reason = error instanceof Error ? error.message : String(error);
-    const name = error instanceof Error ? error.name : 'Error';
-    const isAbort = name === 'AbortError' || name === 'TimeoutError';
-
-    return new ApiError(
-      `${isAbort ? 'Request aborted' : 'Network request failed'}: ${method} ${url}: ${reason}`,
-      {
-        method,
-        url,
-        cause: error,
-        details: error && typeof error === 'object' ? { name } : undefined,
-      }
-    );
   }
 
   /**
@@ -308,23 +224,9 @@ export class HttpClient {
     const controller = new AbortController();
     const signal = options?.signal ?? controller.signal;
 
-    // Handle FormData, Blob, ArrayBuffer: pass through without stringifying
-    let requestBody: BodyInit | undefined;
-    if (body != null) {
-      if (body instanceof FormData) {
-        requestBody = body;
-        // Remove Content-Type header so browser can set it with proper boundary
-        delete headers['Content-Type'];
-      } else if (body instanceof Blob || body instanceof ArrayBuffer) {
-        requestBody = body;
-      } else if (headers['Content-Type']?.includes('json')) {
-        requestBody = JSON.stringify(body);
-      } else {
-        requestBody = String(body);
-      }
-    }
+    const requestBody = serializeRequestBody(body, headers);
 
-    const init: RequestInit & { __urlOverride?: string } = {
+    const init: RequestInitWithUrlOverride = {
       method,
       headers,
       body: requestBody,
@@ -344,31 +246,12 @@ export class HttpClient {
       // Loop for potential token refresh retry
       while (true) {
         // Apply timeout if configured
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        if (this.timeoutMs && !options?.signal) {
-          timeoutId = setTimeout(() => {
-            const timeoutError = new Error('Request timeout');
-            timeoutError.name = 'TimeoutError';
-            controller.abort(timeoutError);
-          }, this.timeoutMs);
-        }
+        const timeoutId = startRequestTimeout(this.timeoutMs, !!options?.signal, controller);
 
         try {
           // Re-apply auth headers if this is a retry (unless skipAuth is set)
           if (refreshAttempted && !options?.skipAuth) {
-            const freshInit = {
-              ...init,
-              headers:
-                typeof init.headers === 'object' &&
-                !(init.headers instanceof Headers) &&
-                !Array.isArray(init.headers)
-                  ? { ...(init.headers as Record<string, string>) }
-                  : init.headers,
-            };
-            // We need to re-run apply to get new token
-            await this.auth.apply({ url, init: freshInit, options });
-            // Update headers with potentially new token
-            init.headers = freshInit.headers;
+            await reapplyAuthHeaders(this.auth, url, init, options);
           }
 
           const req = new Request(url, init);
@@ -377,7 +260,7 @@ export class HttpClient {
           try {
             res = await this.fetchImpl(req);
           } catch (error) {
-            throw this.createNetworkError(method, url, error);
+            throw createNetworkError(method, url, error);
           }
 
           if (res.status === 401 && this.onUnauthenticated && !refreshAttempted) {
@@ -395,11 +278,13 @@ export class HttpClient {
           // Check for errors first
           if (!res.ok) {
             if (
-              !options?.skipRetry &&
-              this.retryPolicy.maxAttempts > 0 &&
-              retryAttempt < this.retryPolicy.maxAttempts &&
-              this.retryPolicy.retryStatusCodes?.includes(status) &&
-              this.retryPolicy.retryMethods?.includes(method)
+              isRetryableResponse(
+                this.retryPolicy,
+                method,
+                status,
+                retryAttempt,
+                options?.skipRetry
+              )
             ) {
               let shouldRetry = true;
               if (this.retryPolicy.shouldRetry) {
@@ -413,17 +298,16 @@ export class HttpClient {
               }
               if (shouldRetry) {
                 retryAttempt++;
-                let delay = this.retryPolicy.baseDelayMs * 2 ** (retryAttempt - 1);
-                if (this.retryPolicy.respectRetryAfter) {
-                  const retryAfter =
-                    res.headers.get('Retry-After') || res.headers.get('retry-after');
-                  if (retryAfter) {
-                    delay = parseInt(retryAfter, 10) * 1000;
-                    this.logger.warn(
-                      `Request failed with status ${status}. Retrying after ${delay}ms due to Retry-After header...`,
-                      { method, url, status, retryAttempt: retryAttempt + 1 }
-                    );
-                  }
+                const { delay, usedRetryAfter } = getRetryDelay(
+                  this.retryPolicy,
+                  retryAttempt,
+                  res
+                );
+                if (usedRetryAfter) {
+                  this.logger.warn(
+                    `Request failed with status ${status}. Retrying after ${delay}ms due to Retry-After header...`,
+                    { method, url, status, retryAttempt: retryAttempt + 1 }
+                  );
                 } else {
                   this.logger.warn(
                     `Request failed with status ${status}. Retrying attempt ${retryAttempt} after ${delay}ms...`,
@@ -437,49 +321,29 @@ export class HttpClient {
           }
 
           // Handle different response types appropriately
-          const data = await this.parseResponseData(res, method, url);
+          const data = await parseResponseData(res, method, url);
 
           await this.runAfterHooks(new Request(url, init), res, data);
 
           if (!res.ok) {
-            throw this.createStatusError(method, url, res, data);
+            throw createStatusError(method, url, res, data);
           }
 
           const duration = Date.now() - startTime;
-          this.logger.info('HTTP request successful', {
-            method,
-            url,
-            status: res.status,
-            durationMs: duration,
-          });
-
-          this.metrics.collect({
+          recordSuccessfulRequest(
+            this.logger,
+            this.metrics,
             method,
             path,
-            status: res.status,
-            durationMs: duration,
-            timestamp: new Date().toISOString(),
-            success: true,
-          });
+            url,
+            res.status,
+            duration
+          );
 
           return { data: data as T, status: status };
         } catch (error) {
           const duration = Date.now() - startTime;
-          this.logger.error('HTTP request failed', error as Error, {
-            method,
-            url,
-            durationMs: duration,
-          });
-
-          this.metrics.collect({
-            method,
-            path,
-            status: error instanceof ApiError ? error.status : undefined,
-            durationMs: duration,
-            timestamp: new Date().toISOString(),
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          recordFailedRequest(this.logger, this.metrics, method, path, url, duration, error);
 
           throw error;
         } finally {

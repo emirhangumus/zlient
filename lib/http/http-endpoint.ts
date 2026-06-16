@@ -1,5 +1,10 @@
 import {
-  ApiError,
+  assertRequiredEndpointValue,
+  parseEndpointValue,
+  resolveEndpointPath,
+  validateRequiredHeaders,
+} from '../endpoint-utils';
+import {
   HTTPMethod,
   ResponseSchema,
   SchemaDefinitionError,
@@ -103,61 +108,47 @@ export class EndpointImpl<
     const skipRequestValidation = this.config.advanced?.skipRequestValidation ?? false;
     const skipResponseValidation = this.config.advanced?.skipResponseValidation ?? false;
 
-    // Validate required headers
-    if (this.config.mustHeaderKeys && this.config.mustHeaderKeys.length > 0) {
-      const missingHeaders = this.config.mustHeaderKeys.filter(
-        (key) => !headers || !(key in headers)
-      );
-      if (missingHeaders.length > 0) {
-        throw new ApiError(`Missing required header(s): ${missingHeaders.join(', ')}`, {
-          details: { missingHeaders },
-        });
-      }
-    }
+    validateRequiredHeaders(this.config.mustHeaderKeys, headers);
 
     // Validate Request Body using Standard Schema
-    if (!skipRequestValidation && this.config.request && data !== undefined) {
-      await parseOrThrow(this.config.request, data, { label: 'Request body' });
-    }
+    await parseEndpointValue(this.config.request, data, skipRequestValidation, 'Request body');
 
     // Validate Query Params using Standard Schema
-    const parsedQuery = (
-      !skipRequestValidation && this.config.query && query !== undefined
-        ? await parseOrThrow(this.config.query, query, { label: 'Query parameters' })
-        : query
-    ) as InferQueryOutput<QuerySchema>;
+    const parsedQuery = (await parseEndpointValue(
+      this.config.query,
+      query,
+      skipRequestValidation,
+      'Query parameters'
+    )) as InferQueryOutput<QuerySchema>;
 
     // Validate Path Params using Standard Schema
-    const parsedPathParams = (
-      !skipRequestValidation && this.config.pathParams && pathParams !== undefined
-        ? await parseOrThrow(this.config.pathParams, pathParams, { label: 'Path parameters' })
-        : pathParams
-    ) as InferPathOutput<PathSchema> | undefined;
+    const parsedPathParams = (await parseEndpointValue(
+      this.config.pathParams,
+      pathParams,
+      skipRequestValidation,
+      'Path parameters'
+    )) as InferPathOutput<PathSchema> | undefined;
 
     // Check for missing required params
-    if (this.config.request && data === undefined) {
-      throw new ApiError('Missing required request body (data)', {
-        details: { missingParam: 'data' },
-      });
-    }
-    if (this.config.pathParams && pathParams === undefined) {
-      throw new ApiError('Missing required path parameters (pathParams)', {
-        details: { missingParam: 'pathParams' },
-      });
-    }
+    assertRequiredEndpointValue(
+      this.config.request,
+      data,
+      'data',
+      'Missing required request body (data)'
+    );
+    assertRequiredEndpointValue(
+      this.config.pathParams,
+      pathParams,
+      'pathParams',
+      'Missing required path parameters (pathParams)'
+    );
 
     // Resolve Path
-    let pathStr: string;
-    if (typeof this.config.path === 'function') {
-      if (!pathParams) {
-        throw new ApiError('Path function requires pathParams', {
-          details: { missingParam: 'pathParams' },
-        });
-      }
-      pathStr = this.config.path(parsedPathParams as InferPathOutput<PathSchema>);
-    } else {
-      pathStr = this.config.path;
-    }
+    const pathStr = resolveEndpointPath(
+      this.config.path,
+      pathParams,
+      parsedPathParams as InferPathOutput<PathSchema>
+    );
 
     const { data: responseData, status } = await this.client.request(
       this.config.method,

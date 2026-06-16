@@ -85,8 +85,9 @@ describe('SSE Support', () => {
     const sse = await eventStream();
     sse.on('custom', (data) => {
       try {
-        expect(data.type).toBe('custom_event');
-        expect(data.val).toBe(123);
+        const event = data as { type: string; val: number };
+        expect(event.type).toBe('custom_event');
+        expect(event.val).toBe(123);
         sse.close();
         done();
       } catch (e) {

@@ -66,8 +66,9 @@ describe('SSE Method and Body Support', () => {
 
     sse.on('custom', (data) => {
       try {
-        expect(data.type).toBe('custom');
-        expect(data.val).toBe(456);
+        const event = data as { type: string; val: number };
+        expect(event.type).toBe('custom');
+        expect(event.val).toBe(456);
         sse.close();
         done();
       } catch (e) {
