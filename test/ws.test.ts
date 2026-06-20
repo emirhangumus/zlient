@@ -26,10 +26,10 @@ describe('WebSocket Support', () => {
       readonly protocols?: string | string[]
     ) {
       FakeWebSocket.instances.push(this);
-      queueMicrotask(() => {
+      setTimeout(() => {
         this.readyState = FakeWebSocket.OPEN;
         this.onopen?.();
-      });
+      }, 0);
     }
 
     send(message: string) {
@@ -73,75 +73,81 @@ describe('WebSocket Support', () => {
     }
   });
 
-  it('should connect and exchange typed messages', (done) => {
+  it('should connect and exchange typed messages', async () => {
     const chatWs = client.createWebSocket({
       path: '/chat',
       send: z.object({ type: z.string() }),
       receive: z.object({ type: z.string(), user: z.string() }),
     });
 
-    const socket = chatWs();
+    const socket = await chatWs();
 
-    socket.on('open', () => {
-      socket.send({ type: 'hello' });
+    await new Promise<void>((resolve, reject) => {
+      socket.on('open', () => {
+        socket.send({ type: 'hello' });
+      });
+
+      socket.on('message', (data) => {
+        try {
+          expect(data.type).toBe('welcome');
+          expect(data.user).toBe('bot');
+          socket.close();
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+
+      socket.on('error', (err) => reject(new Error(String(err))));
+    });
+  });
+
+  it('should handle path parameters', async () => {
+    const roomWs = client.createWebSocket({
+      path: (params) => `/rooms/${params.id}`,
+      pathParams: z.object({ id: z.string() }),
+      receive: z.any(),
     });
 
-    socket.on('message', (data) => {
-      try {
-        expect(data.type).toBe('welcome');
-        expect(data.user).toBe('bot');
+    const socket = await roomWs({ pathParams: { id: '123' } });
+
+    await new Promise<void>((resolve, reject) => {
+      socket.on('open', () => {
+        expect(FakeWebSocket.instances[0].url).toBe('ws://localhost:3001/rooms/123');
         socket.close();
-        done();
-      } catch (e) {
-        done(e);
-      }
-    });
-
-    socket.on('error', (err) => {
-      done(err);
+        resolve();
+      });
+      socket.on('error', (err) => reject(new Error(String(err))));
     });
   });
 
-  it('should handle path parameters', (done) => {
+  it('should validate path parameters before connecting', async () => {
     const roomWs = client.createWebSocket({
       path: (params) => `/rooms/${params.id}`,
       pathParams: z.object({ id: z.string() }),
       receive: z.any(),
     });
 
-    const socket = roomWs({ pathParams: { id: '123' } });
-
-    socket.on('open', () => {
-      expect(FakeWebSocket.instances[0].url).toBe('ws://localhost:3001/rooms/123');
-      socket.close();
-      done();
-    });
-    socket.on('error', (err) => done(err));
-  });
-
-  it('should validate path parameters before connecting', () => {
-    const roomWs = client.createWebSocket({
-      path: (params) => `/rooms/${params.id}`,
-      pathParams: z.object({ id: z.string() }),
-      receive: z.any(),
-    });
-
-    expect(() => roomWs({ pathParams: { id: 123 as any } })).toThrow(ApiError);
+    await expect(
+      async () => await roomWs({ pathParams: { id: 123 as unknown as string } })
+    ).toThrow(ApiError);
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
-  it('should validate query parameters before connecting', () => {
+  it('should validate query parameters before connecting', async () => {
     const roomWs = client.createWebSocket({
       path: '/rooms',
       query: z.object({ token: z.string() }),
       receive: z.any(),
     });
 
-    expect(() => roomWs({ query: { token: 123 as any } })).toThrow(ApiError);
+    await expect(
+      async () => await roomWs({ query: { token: 123 as unknown as string } })
+    ).toThrow(ApiError);
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
-  it('should skip endpoint request validation when configured', (done) => {
+  it('should skip endpoint request validation when configured', async () => {
     const roomWs = client.createWebSocket({
       path: (params) => `/rooms/${params.id}`,
       pathParams: z.object({ id: z.string() }),
@@ -150,17 +156,19 @@ describe('WebSocket Support', () => {
       advanced: { skipRequestValidation: true },
     });
 
-    const socket = roomWs({
-      pathParams: { id: 123 as any },
-      query: { token: 456 as any },
+    const socket = await roomWs({
+      pathParams: { id: 123 as unknown as string },
+      query: { token: 456 as unknown as string },
     });
 
-    socket.on('open', () => {
-      expect(FakeWebSocket.instances[0].url).toBe('ws://localhost:3001/rooms/123?token=456');
-      socket.close();
-      done();
+    await new Promise<void>((resolve, reject) => {
+      socket.on('open', () => {
+        expect(FakeWebSocket.instances[0].url).toBe('ws://localhost:3001/rooms/123?token=456');
+        socket.close();
+        resolve();
+      });
+      socket.on('error', (err) => reject(new Error(String(err))));
     });
-    socket.on('error', (err) => done(err));
   });
 
   it('should throw validation error on invalid send', async () => {
@@ -169,13 +177,13 @@ describe('WebSocket Support', () => {
       send: z.object({ text: z.string() }),
     });
 
-    const socket = validatedWs();
+    const socket = await validatedWs();
     try {
-      await socket.send({ text: 123 as any });
+      await socket.send({ text: 123 as unknown as string });
       expect(true).toBe(false);
-    } catch (e: any) {
+    } catch (e: unknown) {
       expect(e).toBeInstanceOf(ApiError);
-      expect(e.message).toContain('Validation failed');
+      expect((e as ApiError).message).toContain('Validation failed');
     } finally {
       socket.close();
     }

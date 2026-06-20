@@ -122,7 +122,7 @@ async function characterizeSSEInference() {
   streamEvents({ pathParams: { topic: 123 }, data: { filter: 'active' } });
 }
 
-function characterizeWebSocketInference() {
+async function characterizeWebSocketInference() {
   const client = createTypeTestClient();
 
   const chat = client.createWebSocket({
@@ -132,16 +132,16 @@ function characterizeWebSocketInference() {
     receive: z.object({ user: z.string(), text: z.string() }),
   });
 
-  const socket = chat({ pathParams: { roomId: 'lobby' } });
+  const socket = await chat({ pathParams: { roomId: 'lobby' } });
 
-  socket.send({ text: 'hello' });
+  void socket.send({ text: 'hello' });
 
   socket.on('message', (data) => {
     assertType<{ user: string; text: string }>(data);
   });
 
   // @ts-expect-error - WebSocket send data is inferred from the send schema input.
-  socket.send({ text: 123 });
+  void socket.send({ text: 123 });
 
   // @ts-expect-error - WebSocket path params are inferred from the pathParams schema input.
   chat({ pathParams: { roomId: 123 } });

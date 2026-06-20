@@ -1,5 +1,5 @@
 import { ApiError, StandardSchemaV1 } from './types';
-import { formatValidationIssues, parseOrThrow } from './validation';
+import { parseOrThrow } from './validation';
 
 export function validateRequiredHeaders(
   mustHeaderKeys: readonly string[] | undefined,
@@ -7,10 +7,10 @@ export function validateRequiredHeaders(
 ): void {
   if (!mustHeaderKeys || mustHeaderKeys.length === 0) return;
 
-  const missingHeaders = mustHeaderKeys.filter((key) => !headers || !(key in headers));
-  if (missingHeaders.length > 0) {
-    throw new ApiError(`Missing required header(s): ${missingHeaders.join(', ')}`, {
-      details: { missingHeaders },
+  const missing = mustHeaderKeys.filter((key) => !headers || !(key in headers));
+  if (missing.length > 0) {
+    throw new ApiError(`Missing required header(s): ${missing.join(', ')}`, {
+      details: { missingHeaders: missing },
     });
   }
 }
@@ -22,33 +22,7 @@ export async function parseEndpointValue(
   label: string
 ): Promise<unknown> {
   if (skipValidation || !schema || value === undefined) return value;
-
   return parseOrThrow(schema, value, { label });
-}
-
-export function parseEndpointValueSync(
-  schema: StandardSchemaV1 | undefined,
-  value: unknown,
-  skipValidation: boolean,
-  label: string
-): unknown {
-  if (skipValidation || !schema || value === undefined) return value;
-
-  const result = schema['~standard'].validate(value);
-  if (result instanceof Promise) {
-    void result.catch(() => undefined);
-    return value;
-  }
-
-  if (result.issues) {
-    const messages = formatValidationIssues(result.issues);
-    const issueCount = result.issues.length > 3 ? ` (${result.issues.length} issues total)` : '';
-    throw new ApiError(`${label} validation failed: ${messages}${issueCount}`, {
-      validationIssues: result.issues,
-    });
-  }
-
-  return result.value;
 }
 
 export function assertRequiredEndpointValue(
@@ -58,10 +32,7 @@ export function assertRequiredEndpointValue(
   message: string
 ): void {
   if (!schema || value !== undefined) return;
-
-  throw new ApiError(message, {
-    details: { missingParam },
-  });
+  throw new ApiError(message, { details: { missingParam } });
 }
 
 export function resolveEndpointPath<PathParams>(
@@ -78,4 +49,76 @@ export function resolveEndpointPath<PathParams>(
   }
 
   return path(parsedPathParams);
+}
+
+export type EndpointParamsConfig = {
+  request?: StandardSchemaV1;
+  query?: StandardSchemaV1;
+  pathParams?: StandardSchemaV1;
+  path: string | ((params: unknown) => string);
+  advanced?: { skipRequestValidation?: boolean };
+};
+
+export type RawEndpointParams = {
+  data?: unknown;
+  query?: unknown;
+  pathParams?: unknown;
+};
+
+export type ValidatedEndpointParams = {
+  parsedData: unknown;
+  parsedQuery: unknown;
+  parsedPathParams: unknown;
+  pathStr: string;
+};
+
+/**
+ * Shared validation pipeline used by HTTP, SSE, and WebSocket endpoints.
+ * Validates request body, query params, and path params; asserts required
+ * fields are present; and resolves the final path string.
+ */
+export async function validateEndpointParams(
+  config: EndpointParamsConfig,
+  raw: RawEndpointParams,
+  labels: { request?: string; query?: string; path?: string } = {}
+): Promise<ValidatedEndpointParams> {
+  const skip = config.advanced?.skipRequestValidation ?? false;
+
+  const parsedData = await parseEndpointValue(
+    config.request,
+    raw.data,
+    skip,
+    labels.request ?? 'Request body'
+  );
+
+  const parsedQuery = await parseEndpointValue(
+    config.query,
+    raw.query,
+    skip,
+    labels.query ?? 'Query parameters'
+  );
+
+  const parsedPathParams = await parseEndpointValue(
+    config.pathParams,
+    raw.pathParams,
+    skip,
+    labels.path ?? 'Path parameters'
+  );
+
+  assertRequiredEndpointValue(
+    config.request,
+    raw.data,
+    'data',
+    'Missing required request body (data)'
+  );
+  assertRequiredEndpointValue(
+    config.pathParams,
+    raw.pathParams,
+    'pathParams',
+    'Missing required path parameters (pathParams)'
+  );
+
+  const pathStr = resolveEndpointPath(config.path, raw.pathParams, parsedPathParams);
+
+  return { parsedData, parsedQuery, parsedPathParams, pathStr };
 }

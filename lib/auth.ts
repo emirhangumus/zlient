@@ -1,11 +1,14 @@
 import type { RequestOptions as ReqOpts } from './types';
 
 /**
- * Extended RequestInit with URL override capability for query-based auth.
+ * Context passed to authentication providers when applying credentials.
+ * The `url` property is mutable — auth providers that need to add query
+ * parameters (e.g. API keys) should update it directly instead of modifying
+ * the RequestInit.
  */
 export interface AuthContext {
   url: string;
-  init: RequestInit & { __urlOverride?: string };
+  init: RequestInit;
   options?: ReqOpts;
 }
 
@@ -16,8 +19,8 @@ export interface AuthContext {
  * @example
  * ```ts
  * class CustomAuth implements AuthProvider {
- *   async apply({ init }) {
- *     init.headers = { ...init.headers, 'X-Custom-Auth': 'token' };
+ *   apply({ init }) {
+ *     (init.headers as Record<string, string>)['X-Custom-Auth'] = 'token';
  *   }
  * }
  * ```
@@ -26,10 +29,9 @@ export interface AuthProvider {
   /**
    * Apply authentication to the outgoing request.
    * Called after SDK headers are assembled, but before request is sent.
-   *
-   * @param req - Request context including URL, init, and options
+   * May update `ctx.url` to append query-based credentials.
    */
-  apply(req: AuthContext): Promise<void> | void;
+  apply(ctx: AuthContext): Promise<void> | void;
 }
 
 /**
@@ -37,7 +39,7 @@ export interface AuthProvider {
  * Use this when you don't need authentication.
  */
 export class NoAuth implements AuthProvider {
-  async apply(_req: AuthContext) {
+  apply(_ctx: AuthContext) {
     /* no-op */
   }
 }
@@ -64,23 +66,25 @@ export class ApiKeyAuth implements AuthProvider {
       throw new Error('ApiKeyAuth cannot use both "header" and "query" options');
     }
   }
-  apply({ url, init }: AuthContext) {
+
+  apply(ctx: AuthContext) {
     const value = this.opts.value;
     if (this.opts.header) {
-      if (init.headers instanceof Headers) {
-        init.headers.set(this.opts.header, value);
-      } else if (Array.isArray(init.headers)) {
-        init.headers.push([this.opts.header, value]);
+      if (ctx.init.headers instanceof Headers) {
+        ctx.init.headers.set(this.opts.header, value);
+      } else if (Array.isArray(ctx.init.headers)) {
+        ctx.init.headers.push([this.opts.header, value]);
       } else {
-        init.headers = { ...init.headers, [this.opts.header]: value };
+        ctx.init.headers = { ...ctx.init.headers, [this.opts.header]: value };
       }
     } else if (this.opts.query) {
-      const u = new URL(url);
+      const u = new URL(ctx.url);
       u.searchParams.set(this.opts.query, value);
-      init.__urlOverride = u.toString();
+      ctx.url = u.toString();
     }
   }
 }
+
 /**
  * Bearer token authentication provider.
  * Supports both static tokens and dynamic token fetching (e.g., for OAuth2 refresh).
@@ -98,18 +102,19 @@ export class ApiKeyAuth implements AuthProvider {
  */
 export class BearerTokenAuth implements AuthProvider {
   constructor(private getToken: () => Promise<string> | string) {}
-  async apply({ init }: AuthContext) {
+
+  async apply(ctx: AuthContext) {
     const token = await this.getToken();
     if (!token) {
       throw new Error('BearerTokenAuth: token is empty or undefined');
     }
     const authHeader = `Bearer ${token}`;
-    if (init.headers instanceof Headers) {
-      init.headers.set('Authorization', authHeader);
-    } else if (Array.isArray(init.headers)) {
-      init.headers.push(['Authorization', authHeader]);
+    if (ctx.init.headers instanceof Headers) {
+      ctx.init.headers.set('Authorization', authHeader);
+    } else if (Array.isArray(ctx.init.headers)) {
+      ctx.init.headers.push(['Authorization', authHeader]);
     } else {
-      init.headers = { ...init.headers, Authorization: authHeader };
+      ctx.init.headers = { ...ctx.init.headers, Authorization: authHeader };
     }
   }
 }

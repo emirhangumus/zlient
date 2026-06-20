@@ -1,10 +1,8 @@
-import type { AuthProvider } from '../auth';
+import type { AuthContext, AuthProvider } from '../auth';
 import type { LoggerUtil } from '../logger';
 import type { MetricsCollector } from '../metrics';
 import { ApiError, HTTPMethod } from '../types';
-import type { HTTPStatusCodeNumber, RequestOptions, RetryPolicy } from '../types';
-
-export type RequestInitWithUrlOverride = RequestInit & { __urlOverride?: string };
+import type { HTTPStatusCodeNumber, RetryPolicy } from '../types';
 
 export function serializeRequestBody(
   body: unknown,
@@ -13,7 +11,7 @@ export function serializeRequestBody(
   if (body == null) return undefined;
 
   if (body instanceof FormData) {
-    // Remove Content-Type header so browser can set it with proper boundary.
+    // Remove Content-Type so the browser sets it with the correct multipart boundary.
     delete headers['Content-Type'];
     return body;
   }
@@ -153,19 +151,22 @@ export function getRetryDelay(
   retryAttempt: number,
   response: Response
 ): { delay: number; usedRetryAfter: boolean } {
-  let delay = retryPolicy.baseDelayMs * 2 ** (retryAttempt - 1);
+  const exponentialDelay = retryPolicy.baseDelayMs * 2 ** (retryAttempt - 1);
 
   if (!retryPolicy.respectRetryAfter) {
-    return { delay, usedRetryAfter: false };
+    return { delay: exponentialDelay, usedRetryAfter: false };
   }
 
-  const retryAfter = response.headers.get('Retry-After') || response.headers.get('retry-after');
-  if (retryAfter) {
-    delay = parseInt(retryAfter, 10) * 1000;
-    return { delay, usedRetryAfter: true };
+  const retryAfterHeader =
+    response.headers.get('Retry-After') || response.headers.get('retry-after');
+  if (retryAfterHeader) {
+    const parsed = parseInt(retryAfterHeader, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return { delay: parsed * 1000, usedRetryAfter: true };
+    }
   }
 
-  return { delay, usedRetryAfter: false };
+  return { delay: exponentialDelay, usedRetryAfter: false };
 }
 
 export function recordSuccessfulRequest(
@@ -177,12 +178,7 @@ export function recordSuccessfulRequest(
   status: number,
   durationMs: number
 ): void {
-  logger.info('HTTP request successful', {
-    method,
-    url,
-    status,
-    durationMs,
-  });
+  logger.info('HTTP request successful', { method, url, status, durationMs });
 
   metrics.collect({
     method,
@@ -203,11 +199,7 @@ export function recordFailedRequest(
   durationMs: number,
   error: unknown
 ): void {
-  logger.error('HTTP request failed', error as Error, {
-    method,
-    url,
-    durationMs,
-  });
+  logger.error('HTTP request failed', error as Error, { method, url, durationMs });
 
   metrics.collect({
     method,
@@ -220,24 +212,21 @@ export function recordFailedRequest(
   });
 }
 
-export async function reapplyAuthHeaders(
-  auth: AuthProvider,
-  url: string,
-  init: RequestInitWithUrlOverride,
-  options: RequestOptions | undefined
-): Promise<void> {
-  const freshInit = {
-    ...init,
-    headers:
-      typeof init.headers === 'object' &&
-      !(init.headers instanceof Headers) &&
-      !Array.isArray(init.headers)
-        ? { ...(init.headers as Record<string, string>) }
-        : init.headers,
-  };
+/**
+ * Re-applies auth to an existing AuthContext, cloning headers first so that
+ * a fresh token overwrites the stale one from the previous attempt.
+ */
+export async function reapplyAuth(auth: AuthProvider, ctx: AuthContext): Promise<void> {
+  const originalHeaders = ctx.init.headers;
+  const clonedHeaders =
+    typeof originalHeaders === 'object' &&
+    !(originalHeaders instanceof Headers) &&
+    !Array.isArray(originalHeaders)
+      ? { ...(originalHeaders as Record<string, string>) }
+      : originalHeaders;
 
-  await auth.apply({ url, init: freshInit, options });
-  init.headers = freshInit.headers;
+  ctx.init = { ...ctx.init, headers: clonedHeaders };
+  await auth.apply(ctx);
 }
 
 export function startRequestTimeout(

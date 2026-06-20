@@ -1,15 +1,17 @@
-import { EventHandler, parseRealtimeData, serializeRealtimeData } from '../realtime-utils';
+import type { EventHandler } from '../realtime-utils';
+import { EventEmitter } from '../event-emitter';
+import { parseRealtimeData, serializeRealtimeData } from '../realtime-utils';
 import { WSConnection, StandardSchemaV1 } from '../types';
 import { parseOrThrow } from '../validation';
-
-type RegisteredHandler = (...args: never[]) => void;
 
 export class WSConnectionImpl<
   SendSchema extends StandardSchemaV1 | undefined,
   ReceiveSchema extends StandardSchemaV1 | undefined,
-> implements WSConnection<SendSchema, ReceiveSchema> {
+>
+  extends EventEmitter
+  implements WSConnection<SendSchema, ReceiveSchema>
+{
   private ws: WebSocket;
-  private handlers: Map<string, Set<EventHandler>> = new Map();
 
   constructor(
     url: string,
@@ -19,6 +21,8 @@ export class WSConnectionImpl<
     private skipResponseValidation = false,
     protocols?: string | string[]
   ) {
+    super();
+
     if (typeof WebSocket === 'undefined') {
       throw new Error('WebSocket is not defined. Ensure you are in a supported environment.');
     }
@@ -47,10 +51,11 @@ export class WSConnectionImpl<
     if (!this.skipRequestValidation && this.sendSchema) {
       await parseOrThrow(this.sendSchema, data);
     }
-
     this.ws.send(serializeRealtimeData(data));
   }
 
+  // Overloads satisfy the WSConnection<> interface; implementation uses never[]
+  // so that any function type (including () => void) is assignable to it.
   on(
     event: 'message',
     handler: (
@@ -63,25 +68,12 @@ export class WSConnectionImpl<
   on(event: 'close', handler: (event: CloseEvent) => void): void;
   on(event: 'error', handler: (event: unknown) => void): void;
   on(event: string, handler: (data: unknown) => void): void;
-  on(event: string, handler: RegisteredHandler): void {
-    if (!this.handlers.has(event)) {
-      this.handlers.set(event, new Set());
-    }
-    this.handlers.get(event)!.add(handler as EventHandler);
+  on(event: string, handler: (...args: never[]) => void): void {
+    super.on(event, handler as EventHandler);
   }
 
-  off(event: string, handler: RegisteredHandler): void {
-    const handlers = this.handlers.get(event);
-    if (handlers) {
-      handlers.delete(handler as EventHandler);
-    }
-  }
-
-  private emit(event: string, ...args: unknown[]): void {
-    const handlers = this.handlers.get(event);
-    if (handlers) {
-      handlers.forEach((handler) => handler(...args));
-    }
+  off(event: string, handler: (...args: never[]) => void): void {
+    super.off(event, handler as EventHandler);
   }
 
   close(code?: number, reason?: string): void {

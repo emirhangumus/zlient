@@ -1,4 +1,4 @@
-import { parseEndpointValueSync, resolveEndpointPath } from '../endpoint-utils';
+import { validateEndpointParams } from '../endpoint-utils';
 import { HttpClient } from '../http/http-client';
 import {
   StandardSchemaV1,
@@ -8,14 +8,6 @@ import {
   WSEndpointConfig,
 } from '../types';
 import { WSConnectionImpl } from './ws-client';
-
-type InferPathInput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
-  ? StandardSchemaV1.InferInput<S>
-  : never;
-
-type InferQueryOutput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
-  ? StandardSchemaV1.InferOutput<S>
-  : undefined;
 
 export class WSEndpointImpl<
   SendSchema extends StandardSchemaV1 | undefined,
@@ -29,34 +21,25 @@ export class WSEndpointImpl<
   ) {}
 
   createCall(): WSEndpointCall<SendSchema, ReceiveSchema, QuerySchema, PathSchema> {
-    return (params) => {
+    return async (params) => {
       const { query, pathParams, protocols } = params || {};
-      const skipRequestValidation = this.config.advanced?.skipRequestValidation ?? false;
 
-      parseEndpointValueSync(
-        this.config.query,
-        query,
-        skipRequestValidation,
-        'WebSocket query parameters'
-      ) as InferQueryOutput<QuerySchema>;
-
-      parseEndpointValueSync(
-        this.config.pathParams,
-        pathParams,
-        skipRequestValidation,
-        'WebSocket path parameters'
-      );
-
-      const pathStr = resolveEndpointPath(
-        this.config.path,
-        pathParams,
-        pathParams as InferPathInput<PathSchema>
+      const { parsedQuery, pathStr } = await validateEndpointParams(
+        this.config,
+        {
+          query,
+          pathParams,
+        },
+        {
+          query: 'WebSocket query parameters',
+          path: 'WebSocket path parameters',
+        }
       );
 
       const baseUrl = this.client.getBaseUrl(this.config.advanced?.baseUrlKey || 'default');
-      // Convert http/https to ws/wss if necessary
+      // Convert http(s) to ws(s) for WebSocket URLs
       const wsBaseUrl = baseUrl.replace(/^http/, 'ws');
-      const url = `${wsBaseUrl}${pathStr}${toQueryString(toRequestQuery(query))}`;
+      const url = `${wsBaseUrl}${pathStr}${toQueryString(toRequestQuery(parsedQuery))}`;
 
       return new WSConnectionImpl<SendSchema, ReceiveSchema>(
         url,

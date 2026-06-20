@@ -24,10 +24,8 @@ export function serializeRealtimeData(data: unknown): string {
   if (data != null && typeof data === 'object') {
     return JSON.stringify(data);
   }
-
   if (typeof data === 'string') {
     return data;
   }
-
   return String(data);
 }

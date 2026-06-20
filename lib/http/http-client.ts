@@ -1,4 +1,4 @@
-import type { AuthProvider } from '../auth';
+import type { AuthContext, AuthProvider } from '../auth';
 import { NoAuth } from '../auth';
 import { LoggerUtil, NoOpLogger } from '../logger';
 import { MetricsCollector, NoOpMetricsCollector } from '../metrics';
@@ -22,22 +22,21 @@ import {
 } from '../types';
 import { WSEndpointImpl } from '../ws/ws-endpoint';
 import { EndpointCall, EndpointConfig, EndpointImpl } from './http-endpoint';
-import type { RequestInitWithUrlOverride } from './request-utils';
 import {
   createNetworkError,
   createStatusError,
   getRetryDelay,
   isRetryableResponse,
   parseResponseData,
+  reapplyAuth,
   recordFailedRequest,
   recordSuccessfulRequest,
-  reapplyAuthHeaders,
-  startRequestTimeout,
   serializeRequestBody,
+  startRequestTimeout,
 } from './request-utils';
 
 /**
- * HTTP client with built-in authentication, and interceptors.
+ * HTTP client with built-in authentication, retry, and interceptors.
  * Supports multiple base URLs, type-safe requests, and comprehensive error handling.
  *
  * @example
@@ -47,8 +46,6 @@ import {
  *   headers: { 'Content-Type': 'application/json' },
  *   timeout: { requestTimeoutMs: 30000 }
  * });
- *
- * const { data } = await client.request('GET', '/users', undefined, { query: { page: 1 } });
  * ```
  */
 export class HttpClient {
@@ -63,18 +60,11 @@ export class HttpClient {
   private metrics: MetricsCollector;
   private onUnauthenticated?: (response: Response) => Promise<boolean> | boolean;
 
-  /**
-   * Creates a new HTTP client instance.
-   *
-   * @param opts - Client configuration options
-   * @throws {Error} If no fetch implementation is available
-   */
   constructor(opts: ClientOptions) {
     this.fetchImpl = opts.fetch ?? (globalThis.fetch?.bind(globalThis) as FetchLike);
     if (!this.fetchImpl)
       throw new Error('No fetch implementation found. Pass one via options.fetch.');
 
-    // Validate baseUrls configuration
     if (!opts.baseUrls || typeof opts.baseUrls !== 'object') {
       throw new Error('baseUrls must be provided and must be an object');
     }
@@ -85,10 +75,8 @@ export class HttpClient {
     this.baseUrls = opts.baseUrls;
     this.headers = opts.headers ?? { 'Content-Type': 'application/json' };
     this.interceptors = opts.interceptors ?? {};
-
     this.retryPolicy = opts.retry ?? { maxAttempts: 0, baseDelayMs: 1000 };
 
-    // Validate retry policy
     if (!Number.isFinite(this.retryPolicy.maxAttempts) || this.retryPolicy.maxAttempts < 0) {
       throw new Error('retry.maxAttempts must be a non-negative finite number');
     }
@@ -101,27 +89,19 @@ export class HttpClient {
       throw new Error('timeout.requestTimeoutMs must be non-negative');
     }
 
-    this.auth = opts['auth'] ?? new NoAuth();
+    this.auth = opts.auth ?? new NoAuth();
     this.logger = new LoggerUtil(opts.logger ?? new NoOpLogger());
     this.metrics = opts.metrics ?? new NoOpMetricsCollector();
     this.onUnauthenticated = opts.onUnauthenticated;
   }
 
-  /**
-   * Set or update the authentication provider.
-   *
-   * @param auth - Authentication provider instance
-   * @example
-   * ```ts
-   * client.setAuth(new BearerTokenAuth(() => getToken()));
-   * ```
-   */
+  /** Set or update the authentication provider at runtime. */
   setAuth(auth: AuthProvider) {
     this.auth = auth;
   }
 
-  private resolveBaseUrl(key?: keyof typeof this.baseUrls) {
-    const k: string = (key as string) || 'default';
+  private resolveBaseUrl(key?: string) {
+    const k = key || 'default';
     const url = this.baseUrls[k];
     if (!url) {
       const availableKeys = Object.keys(this.baseUrls).join(', ');
@@ -130,41 +110,77 @@ export class HttpClient {
     return url.replace(/\/$/, '');
   }
 
-  /**
-   * Run all registered before-request hooks.
-   * @private
-   */
-  private async runBeforeHooks(url: string, init: RequestInitWithUrlOverride) {
+  private async runBeforeHooks(url: string, init: RequestInit) {
     for (const h of this.interceptors.beforeRequest ?? []) {
       await h({ url, init });
     }
   }
 
-  /**
-   * Run all registered after-response hooks.
-   * @private
-   */
   private async runAfterHooks(req: Request, res: Response, parsed?: unknown) {
     for (const h of this.interceptors.afterResponse ?? []) {
       await h({ request: req, response: res, parsed });
     }
   }
 
+  // ── Retry helpers ──────────────────────────────────────────────────────────
+
   /**
-   * Get all configured base URLs.
-   *
-   * @returns Object mapping base URL keys to their resolved URLs
+   * Returns retry info if the response should be retried, or null if not.
    */
+  private async getRetryInfo(
+    res: Response,
+    url: string,
+    method: keyof typeof HTTPMethod,
+    status: HTTPStatusCodeNumber,
+    attempt: number,
+    skipRetry: boolean | undefined
+  ): Promise<{ delay: number; usedRetryAfter: boolean } | null> {
+    if (!isRetryableResponse(this.retryPolicy, method, status, attempt, skipRetry)) {
+      return null;
+    }
+    if (this.retryPolicy.shouldRetry) {
+      const ok = await this.retryPolicy.shouldRetry({
+        url,
+        method,
+        status,
+        attempt,
+        response: res.clone(),
+      });
+      if (!ok) return null;
+    }
+    return getRetryDelay(this.retryPolicy, attempt + 1, res);
+  }
+
+  private logRetry(
+    method: keyof typeof HTTPMethod,
+    url: string,
+    status: HTTPStatusCodeNumber,
+    attempt: number,
+    info: { delay: number; usedRetryAfter: boolean }
+  ) {
+    const suffix = info.usedRetryAfter ? 'due to Retry-After header' : `attempt ${attempt}`;
+    this.logger.warn(
+      `Request failed with status ${status}. Retrying ${suffix} after ${info.delay}ms...`,
+      { method, url, status, retryAttempt: attempt }
+    );
+  }
+
+  /**
+   * Checks whether the 401 response should trigger a token refresh + retry.
+   */
+  private async shouldRefresh(res: Response, refreshAttempted: boolean): Promise<boolean> {
+    if (res.status !== 401 || !this.onUnauthenticated || refreshAttempted) {
+      return false;
+    }
+    return this.onUnauthenticated(res.clone());
+  }
+
+  // ── Public accessors (used by endpoint implementations) ────────────────────
+
   public getBaseUrls() {
     return this.baseUrls;
   }
 
-  /**
-   * Get the resolved base URL for a given key.
-   *
-   * @param key - Base URL key (defaults to 'default' if not provided)
-   * @returns Resolved base URL string
-   */
   public getBaseUrl(key: string) {
     return this.resolveBaseUrl(key);
   }
@@ -184,20 +200,20 @@ export class HttpClient {
     return this.logger;
   }
 
+  /** @internal */
+  public getFetch() {
+    return this.fetchImpl;
+  }
+
+  // ── Core request method ────────────────────────────────────────────────────
+
   /**
    * Make an HTTP request with automatic retry, authentication, and validation.
    *
-   * @param method - HTTP method (GET, POST, PUT, etc.)
-   * @param path - Request path (will be appended to base URL)
-   * @param body - Request body (will be JSON.stringify'd if Content-Type is json)
-   * @param options - Additional request options (headers, query params, etc.)
-   * @returns Promise resolving to response data and Response object
-   * @throws {ApiError} If request fails or response validation fails
-   *
    * @example
    * ```ts
-   * const { data, response } = await client.request('GET', '/users', undefined, {
-   *   query: { page: 1, limit: 10 },
+   * const { data } = await client.request('GET', '/users', undefined, {
+   *   query: { page: 1 },
    *   headers: { 'X-Custom': 'value' }
    * });
    * ```
@@ -210,7 +226,9 @@ export class HttpClient {
   ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
     const startTime = Date.now();
     const base = this.resolveBaseUrl(options?.baseUrlKey);
-    let url = `${base}${path}${toQueryString(options?.query)}`;
+    const headers = { ...this.headers, ...(options?.headers ?? {}) };
+    const controller = new AbortController();
+    const signal = options?.signal ?? controller.signal;
 
     this.logger.debug('HTTP request initiated', {
       method,
@@ -219,245 +237,140 @@ export class HttpClient {
       hasBody: body !== undefined,
     });
 
-    const headers = { ...this.headers, ...(options?.headers ?? {}) };
-
-    const controller = new AbortController();
-    const signal = options?.signal ?? controller.signal;
-
-    const requestBody = serializeRequestBody(body, headers);
-
-    const init: RequestInitWithUrlOverride = {
+    const init: RequestInit = {
       method,
       headers,
-      body: requestBody,
+      body: serializeRequestBody(body, headers),
       signal,
     };
 
+    const authCtx: AuthContext = {
+      url: `${base}${path}${toQueryString(options?.query)}`,
+      init,
+      options,
+    };
+
     if (!options?.skipAuth) {
-      await this.auth.apply({ url, init, options });
+      await this.auth.apply(authCtx);
     }
-    if (init.__urlOverride) url = init.__urlOverride;
-    await this.runBeforeHooks(url, init);
-    // Track refresh attempts to prevent infinite loops
+
+    await this.runBeforeHooks(authCtx.url, authCtx.init);
+
     let refreshAttempted = false;
     let retryAttempt = 0;
 
-    const doFetch = async () => {
-      // Loop for potential token refresh retry
-      while (true) {
-        // Apply timeout if configured
-        const timeoutId = startRequestTimeout(this.timeoutMs, !!options?.signal, controller);
+    while (true) {
+      const timeoutId = startRequestTimeout(this.timeoutMs, !!options?.signal, controller);
 
-        try {
-          // Re-apply auth headers if this is a retry (unless skipAuth is set)
-          if (refreshAttempted && !options?.skipAuth) {
-            await reapplyAuthHeaders(this.auth, url, init, options);
-          }
-
-          const req = new Request(url, init);
-
-          let res: Response;
-          try {
-            res = await this.fetchImpl(req);
-          } catch (error) {
-            throw createNetworkError(method, url, error);
-          }
-
-          if (res.status === 401 && this.onUnauthenticated && !refreshAttempted) {
-            const shouldRetry = await this.onUnauthenticated(res.clone() as unknown as Response);
-            if (shouldRetry) {
-              refreshAttempted = true;
-              // Clear timeout before retrying
-              if (timeoutId) clearTimeout(timeoutId);
-              continue;
-            }
-          }
-
-          const status = res.status as HTTPStatusCodeNumber;
-
-          // Check for errors first
-          if (!res.ok) {
-            if (
-              isRetryableResponse(
-                this.retryPolicy,
-                method,
-                status,
-                retryAttempt,
-                options?.skipRetry
-              )
-            ) {
-              let shouldRetry = true;
-              if (this.retryPolicy.shouldRetry) {
-                shouldRetry = await this.retryPolicy.shouldRetry({
-                  url,
-                  method,
-                  status,
-                  attempt: retryAttempt,
-                  response: res.clone() as unknown as Response,
-                });
-              }
-              if (shouldRetry) {
-                retryAttempt++;
-                const { delay, usedRetryAfter } = getRetryDelay(
-                  this.retryPolicy,
-                  retryAttempt,
-                  res
-                );
-                if (usedRetryAfter) {
-                  this.logger.warn(
-                    `Request failed with status ${status}. Retrying after ${delay}ms due to Retry-After header...`,
-                    { method, url, status, retryAttempt: retryAttempt + 1 }
-                  );
-                } else {
-                  this.logger.warn(
-                    `Request failed with status ${status}. Retrying attempt ${retryAttempt} after ${delay}ms...`,
-                    { method, url, status, retryAttempt }
-                  );
-                }
-                await new Promise((resolve) => setTimeout(resolve, delay));
-                continue;
-              }
-            }
-          }
-
-          // Handle different response types appropriately
-          const data = await parseResponseData(res, method, url);
-
-          await this.runAfterHooks(new Request(url, init), res, data);
-
-          if (!res.ok) {
-            throw createStatusError(method, url, res, data);
-          }
-
-          const duration = Date.now() - startTime;
-          recordSuccessfulRequest(
-            this.logger,
-            this.metrics,
-            method,
-            path,
-            url,
-            res.status,
-            duration
-          );
-
-          return { data: data as T, status: status };
-        } catch (error) {
-          const duration = Date.now() - startTime;
-          recordFailedRequest(this.logger, this.metrics, method, path, url, duration, error);
-
-          throw error;
-        } finally {
-          if (timeoutId) clearTimeout(timeoutId);
+      try {
+        if (refreshAttempted && !options?.skipAuth) {
+          await reapplyAuth(this.auth, authCtx);
         }
-      }
-    };
 
-    return doFetch();
+        const req = new Request(authCtx.url, authCtx.init);
+
+        let res: Response;
+        try {
+          res = await this.fetchImpl(req);
+        } catch (err) {
+          throw createNetworkError(method, authCtx.url, err);
+        }
+
+        if (await this.shouldRefresh(res, refreshAttempted)) {
+          refreshAttempted = true;
+          if (timeoutId) clearTimeout(timeoutId);
+          continue;
+        }
+
+        const status = res.status as HTTPStatusCodeNumber;
+
+        if (!res.ok) {
+          const retryInfo = await this.getRetryInfo(
+            res,
+            authCtx.url,
+            method,
+            status,
+            retryAttempt,
+            options?.skipRetry
+          );
+          if (retryInfo) {
+            retryAttempt++;
+            this.logRetry(method, authCtx.url, status, retryAttempt, retryInfo);
+            await new Promise((resolve) => setTimeout(resolve, retryInfo.delay));
+            continue;
+          }
+        }
+
+        const data = await parseResponseData(res, method, authCtx.url);
+        await this.runAfterHooks(new Request(authCtx.url, authCtx.init), res, data);
+
+        if (!res.ok) {
+          throw createStatusError(method, authCtx.url, res, data);
+        }
+
+        recordSuccessfulRequest(
+          this.logger,
+          this.metrics,
+          method,
+          path,
+          authCtx.url,
+          res.status,
+          Date.now() - startTime
+        );
+
+        return { data: data as T, status };
+      } catch (error) {
+        recordFailedRequest(
+          this.logger,
+          this.metrics,
+          method,
+          path,
+          authCtx.url,
+          Date.now() - startTime,
+          error
+        );
+        throw error;
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+    }
   }
 
-  /**
-   * Convenience method for GET requests.
-   *
-   * @example
-   * ```ts
-   * const { data } = await client.get('/users', { query: { page: 1 } });
-   * ```
-   */
-  async get<T = unknown>(
-    path: string,
-    options?: RequestOptions
-  ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
+  // ── Convenience methods ────────────────────────────────────────────────────
+
+  async get<T = unknown>(path: string, options?: RequestOptions) {
     return this.request<T>('GET', path, undefined, options);
   }
 
-  /**
-   * Convenience method for POST requests.
-   *
-   * @example
-   * ```ts
-   * const { data } = await client.post('/users', { name: 'John' });
-   * ```
-   */
-  async post<T = unknown>(
-    path: string,
-    body?: unknown,
-    options?: RequestOptions
-  ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
+  async post<T = unknown>(path: string, body?: unknown, options?: RequestOptions) {
     return this.request<T>('POST', path, body, options);
   }
 
-  /**
-   * Convenience method for PUT requests.
-   *
-   * @example
-   * ```ts
-   * const { data } = await client.put('/users/1', { name: 'John Updated' });
-   * ```
-   */
-  async put<T = unknown>(
-    path: string,
-    body?: unknown,
-    options?: RequestOptions
-  ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
+  async put<T = unknown>(path: string, body?: unknown, options?: RequestOptions) {
     return this.request<T>('PUT', path, body, options);
   }
 
-  /**
-   * Convenience method for PATCH requests.
-   *
-   * @example
-   * ```ts
-   * const { data } = await client.patch('/users/1', { name: 'John' });
-   * ```
-   */
-  async patch<T = unknown>(
-    path: string,
-    body?: unknown,
-    options?: RequestOptions
-  ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
+  async patch<T = unknown>(path: string, body?: unknown, options?: RequestOptions) {
     return this.request<T>('PATCH', path, body, options);
   }
 
-  /**
-   * Convenience method for DELETE requests.
-   *
-   * @example
-   * ```ts
-   * const { data } = await client.delete('/users/1');
-   * ```
-   */
-  async delete<T = unknown>(
-    path: string,
-    options?: RequestOptions
-  ): Promise<{ data: T; status: HTTPStatusCodeNumber }> {
+  async delete<T = unknown>(path: string, options?: RequestOptions) {
     return this.request<T>('DELETE', path, undefined, options);
   }
 
+  // ── Endpoint factories ─────────────────────────────────────────────────────
+
   /**
-   * Create a strongly-typed endpoint builder.
+   * Create a strongly-typed HTTP endpoint.
    * Works with any Standard Schema-compatible library (Zod, Valibot, ArkType, etc.)
-   *
-   * @param config - Endpoint configuration with schemas
-   * @returns Endpoint call function
    *
    * @example
    * ```ts
-   * // With Zod
-   * import { z } from 'zod';
    * const getUser = client.createEndpoint({
    *   method: 'GET',
    *   path: '/users/:id',
    *   response: z.object({ id: z.string(), name: z.string() }),
    *   pathParams: z.object({ id: z.string() }),
-   * });
-   *
-   * // With Valibot
-   * import * as v from 'valibot';
-   * const getUser = client.createEndpoint({
-   *   method: 'GET',
-   *   path: '/users/:id',
-   *   response: v.object({ id: v.string(), name: v.string() }),
-   *   pathParams: v.object({ id: v.string() }),
    * });
    * ```
    */
@@ -475,10 +388,17 @@ export class HttpClient {
   }
 
   /**
-   * Create a strongly-typed WebSocket endpoint builder.
+   * Create a strongly-typed WebSocket endpoint.
    *
-   * @param config - WebSocket endpoint configuration
-   * @returns WebSocket endpoint call function
+   * @example
+   * ```ts
+   * const chat = client.createWebSocket({
+   *   path: '/ws/chat',
+   *   send: z.object({ text: z.string() }),
+   *   receive: z.object({ text: z.string(), user: z.string() }),
+   * });
+   * const conn = await chat();
+   * ```
    */
   createWebSocket<
     SendSchema extends StandardSchemaV1 | undefined = undefined,
@@ -493,10 +413,18 @@ export class HttpClient {
   }
 
   /**
-   * Create a strongly-typed Server-Sent Events (SSE) endpoint builder.
+   * Create a strongly-typed Server-Sent Events endpoint.
    *
-   * @param config - SSE endpoint configuration
-   * @returns SSE endpoint call function
+   * @example
+   * ```ts
+   * const stream = client.createSSE({
+   *   method: 'GET',
+   *   path: '/events',
+   *   response: z.object({ message: z.string() }),
+   * });
+   * const conn = await stream();
+   * conn.on('message', (data) => console.log(data));
+   * ```
    */
   createSSE<
     ResSchema extends SSEResponseSchema | undefined = undefined,

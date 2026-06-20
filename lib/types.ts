@@ -484,7 +484,7 @@ export type WSEndpointConfig<
   QuerySchema extends StandardSchemaV1 | undefined = undefined,
   PathSchema extends StandardSchemaV1 | undefined = undefined,
 > = {
-  path: string | ((params: StandardSchemaV1.InferInput<Exclude<PathSchema, undefined>>) => string);
+  path: string | ((params: StandardSchemaV1.InferOutput<Exclude<PathSchema, undefined>>) => string);
   send?: SendSchema;
   receive?: ReceiveSchema;
   query?: QuerySchema;
@@ -546,7 +546,7 @@ export type WSEndpointCall<
   PathSchema extends StandardSchemaV1 | undefined,
 > = (
   params?: WSEndpointCallParams<QuerySchema, PathSchema>
-) => WSConnection<SendSchema, ReceiveSchema>;
+) => Promise<WSConnection<SendSchema, ReceiveSchema>>;
 
 /**
  * Configuration for SSE endpoints.
@@ -626,6 +626,16 @@ export interface SSEConnection<T extends SSEResponseSchema | undefined> {
   close(): void;
   readonly readyState: number;
 }
+
+/** Extracts the validated output type from a path parameter schema. */
+export type InferPathOutput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<S>
+  : never;
+
+/** Extracts the validated output type from a query parameter schema. */
+export type InferQueryOutput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<S>
+  : undefined;
 
 export type SSEEndpointCall<
   ResSchema extends SSEResponseSchema | undefined,

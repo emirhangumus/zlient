@@ -371,14 +371,10 @@ describe('Edge Cases and Error Recovery', () => {
         baseUrls: { default: 'https://api.example.com' },
         fetch: mockFetch as any,
         auth: {
-          apply({ url, init }) {
-            if (init.__urlOverride) {
-              init.__urlOverride = url + (url.includes('?') ? '&' : '?') + 'token=abc123';
-            } else {
-              const newUrl = new URL(url);
-              newUrl.searchParams.set('token', 'abc123');
-              init.__urlOverride = newUrl.toString();
-            }
+          apply(ctx) {
+            const newUrl = new URL(ctx.url);
+            newUrl.searchParams.set('token', 'abc123');
+            ctx.url = newUrl.toString();
           },
         },
       });
