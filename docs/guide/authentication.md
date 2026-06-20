@@ -45,24 +45,41 @@ const queryAuth = new ApiKeyAuth({
 
 ## Custom Providers
 
-You can implement the `AuthProvider` interface to build complex auth logic (e.g., signing requests, rotating specialized headers).
+You can implement the `AuthProvider` interface to build complex auth logic (e.g., signing requests, rotating specialized headers, or appending query-based credentials).
+
+`apply(ctx)` receives an `AuthContext` with two mutable fields: `ctx.init` (the `RequestInit`
+being sent — mutate `init.headers` to add headers) and `ctx.url` (the request URL — reassign
+it if your auth scheme needs to append query parameters, the way `ApiKeyAuth`'s query mode does).
 
 ```typescript
 import { AuthProvider, AuthContext } from 'zlient';
 
 class MyCustomAuth implements AuthProvider {
-  async apply({ init }: AuthContext) {
-    // Modify headers directly
+  async apply(ctx: AuthContext) {
+    // Header-based signing
     const timestamp = Date.now().toString();
-    const signature = await signRequest(init, timestamp);
+    const signature = await signRequest(ctx.init, timestamp);
 
-    // Zlient guarantees init.headers interacts safely,
-    // but for complex logic, you might want to normalize it first.
-    if (!init.headers) init.headers = {};
+    // `init.headers` can be a Headers instance, an array of tuples, or a plain
+    // object depending on what the caller passed in — handle all three:
+    if (ctx.init.headers instanceof Headers) {
+      ctx.init.headers.set('X-Signature', signature);
+    } else if (Array.isArray(ctx.init.headers)) {
+      ctx.init.headers.push(['X-Signature', signature]);
+    } else {
+      ctx.init.headers = { ...ctx.init.headers, 'X-Signature': signature };
+    }
 
-    // cast to record if you know it's safe,
-    // OR use the safe handling shown in the migration guide.
-    (init.headers as any)['X-Signature'] = signature;
+    // Query-based credentials: mutate ctx.url instead of init
+    const url = new URL(ctx.url);
+    url.searchParams.set('ts', timestamp);
+    ctx.url = url.toString();
   }
 }
 ```
+
+## Refreshing on 401
+
+If your tokens expire, configure `onUnauthenticated` on the client to refresh and retry
+automatically instead of handling `401`s at every call site — see
+[Handling 401s & Token Refresh](./error-handling#handling-401s-token-refresh).

@@ -28,10 +28,10 @@ const chatWs = client.createWebSocket({
 
 ### Usage
 
-The `createWebSocket` method returns a function that, when called, returns a `WSConnection` instance.
+The `createWebSocket` method returns a function that, when called, resolves to a `WSConnection` instance.
 
 ```typescript
-const socket = chatWs({ pathParams: { roomId: 'lobby' } });
+const socket = await chatWs({ pathParams: { roomId: 'lobby' } });
 
 // Handle connection events
 socket.on('open', () => {

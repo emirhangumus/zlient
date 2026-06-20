@@ -24,7 +24,7 @@ import { Logger, LogEntry } from 'zlient';
 
 class RemoteLogger implements Logger {
   log(entry: LogEntry) {
-    // entry contains: output level, message, timestamp, context, error
+    // entry contains: level, message, timestamp, context, error
     myTelemetryService.emit(entry);
   }
 }
