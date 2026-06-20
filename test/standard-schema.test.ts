@@ -640,7 +640,13 @@ describe('Standard Schema: Cross-Library Interoperability', () => {
       },
     });
 
-    const result = await createItem({});
-    expect(result).toEqual({ error: 'Bad request' });
+    try {
+      await createItem({});
+      expect(true).toBe(false);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).status).toBe(HTTPStatusCode.BAD_REQUEST);
+      expect((error as ApiError).details).toEqual({ error: 'Bad request' });
+    }
   });
 });

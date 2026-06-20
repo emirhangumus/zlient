@@ -1,3 +1,4 @@
+import { validateEndpointParams } from '../endpoint-utils';
 import { HttpClient } from '../http/http-client';
 import {
   SSEEndpointCall,
@@ -5,8 +6,8 @@ import {
   SSEResponseSchema,
   StandardSchemaV1,
   toQueryString,
+  toRequestQuery,
 } from '../types';
-import { parseOrThrow } from '../validation';
 import { SSEConnectionImpl } from './sse-client';
 
 export class SSEEndpointImpl<
@@ -24,43 +25,22 @@ export class SSEEndpointImpl<
     return async (params) => {
       const { query, pathParams, data, headers, signal } = params || {};
 
-      const skipRequestValidation = this.config.advanced?.skipRequestValidation ?? false;
-
-      // Validate Request Body using Standard Schema
-      if (!skipRequestValidation && this.config.request && data !== undefined) {
-        await parseOrThrow(this.config.request, data);
-      }
-
-      // Validate Query Params using Standard Schema
-      if (!skipRequestValidation && this.config.query && query !== undefined) {
-        await parseOrThrow(this.config.query, query);
-      }
-
-      // Validate Path Params using Standard Schema
-      if (!skipRequestValidation && this.config.pathParams && pathParams !== undefined) {
-        await parseOrThrow(this.config.pathParams, pathParams);
-      }
-
-      // Check for missing required params
-      if (this.config.request && data === undefined) {
-        throw new Error('Missing required request body (data)');
-      }
-      if (this.config.pathParams && pathParams === undefined) {
-        throw new Error('Missing required path parameters (pathParams)');
-      }
-
-      // Resolve Path
-      let pathStr: string;
-      if (typeof this.config.path === 'function') {
-        if (!pathParams) throw new Error('Path function requires pathParams');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        pathStr = this.config.path(pathParams as any);
-      } else {
-        pathStr = this.config.path;
-      }
+      const { parsedQuery, pathStr } = await validateEndpointParams(
+        this.config,
+        {
+          data,
+          query,
+          pathParams,
+        },
+        {
+          request: 'SSE request body',
+          query: 'SSE query parameters',
+          path: 'SSE path parameters',
+        }
+      );
 
       const baseUrl = this.client.getBaseUrl(this.config.advanced?.baseUrlKey || 'default');
-      const url = `${baseUrl}${pathStr}${toQueryString(query as any)}`;
+      const url = `${baseUrl}${pathStr}${toQueryString(toRequestQuery(parsedQuery))}`;
 
       return new SSEConnectionImpl<ResSchema>(url, this.config.response, {
         skipResponseValidation: this.config.advanced?.skipResponseValidation,
@@ -75,6 +55,7 @@ export class SSEEndpointImpl<
         signal,
         auth: this.config.advanced?.skipAuth ? undefined : this.client.getAuth(),
         logger: this.client.getLogger(),
+        fetch: this.client.getFetch(),
       });
     };
   }

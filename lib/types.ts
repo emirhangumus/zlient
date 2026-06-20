@@ -297,6 +297,14 @@ export type SafeParseResult<T> =
   | { success: true; data: T }
   | { success: false; issues: ReadonlyArray<StandardSchemaV1.Issue> };
 
+type ErrorConstructorWithStackTrace = ErrorConstructor & {
+  captureStackTrace?: (targetObject: object, constructorOpt?: object) => void;
+};
+
+function captureStackTrace(targetObject: object, constructorOpt: object) {
+  (Error as ErrorConstructorWithStackTrace).captureStackTrace?.(targetObject, constructorOpt);
+}
+
 /**
  * Custom error class for API-related errors.
  * Includes HTTP status codes, response details, and validation errors.
@@ -311,7 +319,10 @@ export type SafeParseResult<T> =
  */
 export class ApiError extends Error {
   public status?: number;
+  public method?: HttpMethod;
+  public url?: string;
   public details?: unknown;
+  public cause?: unknown;
   /** Validation issues from Standard Schema-compatible libraries (Zod, Valibot, ArkType, etc.) */
   public validationIssues?: ReadonlyArray<StandardSchemaV1.Issue>;
 
@@ -319,6 +330,8 @@ export class ApiError extends Error {
     message: string,
     options?: {
       status?: number;
+      method?: HttpMethod;
+      url?: string;
       cause?: unknown;
       details?: unknown;
       validationIssues?: ReadonlyArray<StandardSchemaV1.Issue>;
@@ -327,14 +340,14 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
     this.status = options?.status;
+    this.method = options?.method;
+    this.url = options?.url;
     this.details = options?.details;
     this.cause = options?.cause;
     this.validationIssues = options?.validationIssues;
 
     // Maintains proper stack trace for where error was thrown
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, ApiError);
-    }
+    captureStackTrace(this, ApiError);
   }
 
   /**
@@ -366,6 +379,8 @@ export class ApiError extends Error {
       name: this.name,
       message: this.message,
       status: this.status,
+      method: this.method,
+      url: this.url,
       details: this.details,
       validationIssues: this.validationIssues,
       stack: this.stack,
@@ -383,9 +398,7 @@ export class SchemaDefinitionError extends Error {
     this.name = 'SchemaDefinitionError';
 
     // Maintains proper stack trace
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, SchemaDefinitionError);
-    }
+    captureStackTrace(this, SchemaDefinitionError);
   }
 }
 
@@ -417,7 +430,7 @@ export type RequestOptions = {
   /** Abort controller signal for cancellation */
   signal?: AbortSignal;
   /** Custom query params */
-  query?: URLSearchParams | Record<string, string | number | boolean | undefined>;
+  query?: URLSearchParams | Record<string, unknown>;
   /** Skip authentication for this request */
   skipAuth?: boolean;
   /** Skip retry logic for this request */
@@ -437,20 +450,29 @@ export type RequestOptions = {
  * toQueryString({ optional: undefined }) // ""
  * ```
  */
-export function toQueryString(q?: RequestOptions['query']): string {
+export function toQueryString(q?: unknown): string {
   if (!q) return '';
   if (q instanceof URLSearchParams) {
     const s = q.toString();
     return s ? `?${s}` : '';
   }
+  if (typeof q !== 'object') {
+    throw new TypeError('Query parameters must be a URLSearchParams instance or an object');
+  }
   const params = new URLSearchParams();
-  Object.entries(q).forEach(([k, v]) => {
-    if (v !== undefined) {
+  Object.entries(q as Record<string, unknown>).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) {
       params.append(k, String(v));
     }
   });
   const s = params.toString();
   return s ? `?${s}` : '';
+}
+
+export function toRequestQuery(q: unknown): RequestOptions['query'] {
+  if (q === undefined || q instanceof URLSearchParams) return q;
+  if (q !== null && typeof q === 'object') return q as Record<string, unknown>;
+  throw new TypeError('Query parameters must be a URLSearchParams instance or an object');
 }
 
 /**
@@ -497,27 +519,22 @@ export interface WSConnection<
   SendSchema extends StandardSchemaV1 | undefined,
   ReceiveSchema extends StandardSchemaV1 | undefined,
 > {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   send(
-    data: SendSchema extends StandardSchemaV1 ? StandardSchemaV1.InferInput<SendSchema> : any
+    data: SendSchema extends StandardSchemaV1 ? StandardSchemaV1.InferInput<SendSchema> : unknown
   ): void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   on(
     event: 'message',
     handler: (
       data: ReceiveSchema extends StandardSchemaV1
         ? StandardSchemaV1.InferOutput<ReceiveSchema>
-        : any
+        : unknown
     ) => void
   ): void;
   on(event: 'open', handler: () => void): void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  on(event: 'close', handler: (event: any) => void): void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  on(event: 'error', handler: (event: any) => void): void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  on(event: string, handler: (data: any) => void): void;
-  off(event: string, handler: Function): void;
+  on(event: 'close', handler: (event: CloseEvent) => void): void;
+  on(event: 'error', handler: (event: unknown) => void): void;
+  on(event: string, handler: (data: unknown) => void): void;
+  off(event: string, handler: (...args: unknown[]) => void): void;
   close(code?: number, reason?: string): void;
   readonly readyState: number;
 }
@@ -529,7 +546,7 @@ export type WSEndpointCall<
   PathSchema extends StandardSchemaV1 | undefined,
 > = (
   params?: WSEndpointCallParams<QuerySchema, PathSchema>
-) => WSConnection<SendSchema, ReceiveSchema>;
+) => Promise<WSConnection<SendSchema, ReceiveSchema>>;
 
 /**
  * Configuration for SSE endpoints.
@@ -600,16 +617,25 @@ export interface SSEConnection<T extends SSEResponseSchema | undefined> {
   ): void;
 
   /** Register a handler for built-in events */
-  on(event: 'open' | 'error', handler: (event: any) => void): void;
+  on(event: 'open' | 'error', handler: (event: unknown) => void): void;
 
   /** Register a catch-all handler for other events */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  on(event: string, handler: (data: any) => void): void;
+  on(event: string, handler: (data: unknown) => void): void;
 
-  off(event: string, handler: Function): void;
+  off(event: string, handler: (...args: unknown[]) => void): void;
   close(): void;
   readonly readyState: number;
 }
+
+/** Extracts the validated output type from a path parameter schema. */
+export type InferPathOutput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<S>
+  : never;
+
+/** Extracts the validated output type from a query parameter schema. */
+export type InferQueryOutput<S extends StandardSchemaV1 | undefined> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<S>
+  : undefined;
 
 export type SSEEndpointCall<
   ResSchema extends SSEResponseSchema | undefined,

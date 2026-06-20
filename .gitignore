@@ -61,3 +61,7 @@ docs/.vitepress/dist
 # Temporary files/folders
 tmp/
 temp/
+
+# AI agent folders
+.claude
+.codex

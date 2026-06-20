@@ -1,9 +1,13 @@
+import { validateEndpointParams, validateRequiredHeaders } from '../endpoint-utils';
 import {
   HTTPMethod,
+  InferPathOutput,
+  InferQueryOutput,
   ResponseSchema,
   SchemaDefinitionError,
   SchemaMap,
   StandardSchemaV1,
+  toRequestQuery,
 } from '../types';
 import { isStandardSchema, parseOrThrow } from '../validation';
 import { HttpClient } from './http-client';
@@ -32,7 +36,7 @@ export type EndpointConfig<
   description?: string;
 };
 
-// Helper type to create required headers from mustHeaderKeys
+// Requires specific header keys when MustHeaderKeys is non-empty.
 type RequiredHeaders<Keys extends readonly string[]> = Keys extends readonly []
   ? Record<string, string> | undefined
   : { [K in Keys[number]]: string } & Record<string, string>;
@@ -53,7 +57,7 @@ export type EndpointCallParams<
   ? { headers?: Record<string, string> }
   : { headers: RequiredHeaders<MustHeaderKeys> });
 
-// Helper to extract the response type from a schema which might be a single schema or a status map
+// Infers the union of all possible response output types.
 type InferResponse<S> = S extends StandardSchemaV1
   ? StandardSchemaV1.InferOutput<S>
   : S extends SchemaMap
@@ -90,59 +94,20 @@ export class EndpointImpl<
     const { data, query, pathParams, signal } = params;
     const headers = 'headers' in params ? params.headers : undefined;
 
-    const skipRequestValidation = this.config.advanced?.skipRequestValidation ?? false;
-    const skipResponseValidation = this.config.advanced?.skipResponseValidation ?? false;
+    validateRequiredHeaders(this.config.mustHeaderKeys, headers);
 
-    // Validate required headers
-    if (this.config.mustHeaderKeys && this.config.mustHeaderKeys.length > 0) {
-      const missingHeaders = this.config.mustHeaderKeys.filter(
-        (key) => !headers || !(key in headers)
-      );
-      if (missingHeaders.length > 0) {
-        throw new Error(`Missing required header(s): ${missingHeaders.join(', ')}`);
-      }
-    }
-
-    // Validate Request Body using Standard Schema
-    if (!skipRequestValidation && this.config.request && data !== undefined) {
-      await parseOrThrow(this.config.request, data);
-    }
-
-    // Validate Query Params using Standard Schema
-    if (!skipRequestValidation && this.config.query && query !== undefined) {
-      await parseOrThrow(this.config.query, query);
-    }
-
-    // Validate Path Params using Standard Schema
-    if (!skipRequestValidation && this.config.pathParams && pathParams !== undefined) {
-      await parseOrThrow(this.config.pathParams, pathParams);
-    }
-
-    // Check for missing required params
-    if (this.config.request && data === undefined) {
-      throw new Error('Missing required request body (data)');
-    }
-    if (this.config.pathParams && pathParams === undefined) {
-      throw new Error('Missing required path parameters (pathParams)');
-    }
-
-    // Resolve Path
-    let pathStr: string;
-    if (typeof this.config.path === 'function') {
-      if (!pathParams) throw new Error('Path function requires pathParams');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      pathStr = this.config.path(pathParams as any);
-    } else {
-      pathStr = this.config.path;
-    }
+    const { parsedQuery, pathStr } = await validateEndpointParams(this.config, {
+      data,
+      query,
+      pathParams,
+    });
 
     const { data: responseData, status } = await this.client.request(
       this.config.method,
       pathStr,
       data,
       {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        query: query as any,
+        query: toRequestQuery(parsedQuery),
         headers,
         baseUrlKey: this.config.advanced?.baseUrlKey,
         skipAuth: this.config.advanced?.skipAuth,
@@ -151,25 +116,32 @@ export class EndpointImpl<
       }
     );
 
-    // Handle Response Validation
-    const schema = this.config.response;
-    if (skipResponseValidation) {
+    if (this.config.advanced?.skipResponseValidation) {
       return responseData as InferResponse<ResSchema>;
     }
 
+    const schema = this.config.response;
+
     if (isStandardSchema(schema)) {
-      // Single schema for all success codes
-      return (await parseOrThrow(schema, responseData)) as InferResponse<ResSchema>;
+      return (await parseOrThrow(schema, responseData, {
+        label: `Response body for status ${status}`,
+        status,
+      })) as InferResponse<ResSchema>;
     }
 
-    // Map of status codes to schemas
+    // SchemaMap: look up by status code
     const schemaMap = schema as SchemaMap;
     const specificSchema = schemaMap[status];
     if (!specificSchema) {
-      // No schema defined for this status code
       throw new SchemaDefinitionError(status);
     }
 
-    return (await parseOrThrow(specificSchema, responseData)) as InferResponse<ResSchema>;
+    return (await parseOrThrow(specificSchema, responseData, {
+      label: `Response body for status ${status}`,
+      status,
+    })) as InferResponse<ResSchema>;
   }
 }
+
+// Re-export for convenience
+export type { InferPathOutput, InferQueryOutput };

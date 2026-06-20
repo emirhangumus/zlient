@@ -1,30 +1,47 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 import { z } from 'zod';
 import { HttpClient } from '../lib/http/http-client';
 import { BearerTokenAuth, ApiKeyAuth } from '../lib/auth';
 
-describe('SSE Authentication', () => {
-  let client: HttpClient;
+function makeStreamFetch(onCall: (url: string, init: RequestInit) => void) {
+  return mock(async (url: string, init: RequestInit) => {
+    onCall(url, init);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      },
+    });
+    return { ok: true, status: 200, body: stream } as unknown as Response;
+  });
+}
 
-  beforeEach(() => {
-    client = new HttpClient({
-      baseUrls: { default: 'http://localhost:3000' },
-      headers: { 'X-Base-Header': 'base-value' },
+function waitForOpen(sse: {
+  on: (event: string, handler: (...args: unknown[]) => void) => void;
+  close: () => void;
+  readyState: number;
+}): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (sse.readyState === 1) { resolve(); return; }
+    if (sse.readyState === 2) { reject(new Error('SSE already closed')); return; }
+    sse.on('open', () => resolve());
+    sse.on('error', (e: unknown) => {
+      reject(e instanceof Error ? e : new Error(String(e)));
     });
   });
+}
 
-  it('should apply Bearer token auth to SSE requests', async (done) => {
+describe('SSE Authentication', () => {
+  it('should apply Bearer token auth to SSE requests', async () => {
     let capturedHeaders: Record<string, string> = {};
-    (globalThis as any).fetch = mock(async (url: string, init: any) => {
-      capturedHeaders = init.headers;
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.close();
-        },
-      });
-      return { ok: true, status: 200, body: stream } as any;
+    const mockFetch = makeStreamFetch((_, init) => {
+      capturedHeaders = init.headers as Record<string, string>;
     });
 
+    const client = new HttpClient({
+      baseUrls: { default: 'http://localhost:3000' },
+      headers: { 'X-Base-Header': 'base-value' },
+      fetch: mockFetch,
+    });
     client.setAuth(new BearerTokenAuth(() => 'test-token'));
 
     const eventStream = client.createSSE({
@@ -34,31 +51,23 @@ describe('SSE Authentication', () => {
     });
 
     const sse = await eventStream();
+    await waitForOpen(sse);
 
-    setTimeout(() => {
-      try {
-        expect(capturedHeaders['Authorization']).toBe('Bearer test-token');
-        expect(capturedHeaders['X-Base-Header']).toBe('base-value');
-        sse.close();
-        done();
-      } catch (e) {
-        done(e);
-      }
-    }, 50);
+    expect(capturedHeaders['Authorization']).toBe('Bearer test-token');
+    expect(capturedHeaders['X-Base-Header']).toBe('base-value');
+    sse.close();
   });
 
-  it('should apply query-based auth to SSE requests', async (done) => {
-    let capturedUrl: string = '';
-    (globalThis as any).fetch = mock(async (url: string, init: any) => {
+  it('should apply query-based auth to SSE requests', async () => {
+    let capturedUrl = '';
+    const mockFetch = makeStreamFetch((url) => {
       capturedUrl = url;
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.close();
-        },
-      });
-      return { ok: true, status: 200, body: stream } as any;
     });
 
+    const client = new HttpClient({
+      baseUrls: { default: 'http://localhost:3000' },
+      fetch: mockFetch,
+    });
     client.setAuth(new ApiKeyAuth({ query: 'api_key', value: 'secret-key' }));
 
     const eventStream = client.createSSE({
@@ -68,31 +77,23 @@ describe('SSE Authentication', () => {
     });
 
     const sse = await eventStream();
+    await waitForOpen(sse);
 
-    setTimeout(() => {
-      try {
-        const url = new URL(capturedUrl);
-        expect(url.searchParams.get('api_key')).toBe('secret-key');
-        sse.close();
-        done();
-      } catch (e) {
-        done(e);
-      }
-    }, 50);
+    const url = new URL(capturedUrl);
+    expect(url.searchParams.get('api_key')).toBe('secret-key');
+    sse.close();
   });
 
-  it('should skip auth if skipAuth is set in advanced options', async (done) => {
+  it('should skip auth if skipAuth is set in advanced options', async () => {
     let capturedHeaders: Record<string, string> = {};
-    (globalThis as any).fetch = mock(async (url: string, init: any) => {
-      capturedHeaders = init.headers;
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.close();
-        },
-      });
-      return { ok: true, status: 200, body: stream } as any;
+    const mockFetch = makeStreamFetch((_, init) => {
+      capturedHeaders = init.headers as Record<string, string>;
     });
 
+    const client = new HttpClient({
+      baseUrls: { default: 'http://localhost:3000' },
+      fetch: mockFetch,
+    });
     client.setAuth(new BearerTokenAuth(() => 'test-token'));
 
     const eventStream = client.createSSE({
@@ -105,15 +106,9 @@ describe('SSE Authentication', () => {
     });
 
     const sse = await eventStream();
+    await waitForOpen(sse);
 
-    setTimeout(() => {
-      try {
-        expect(capturedHeaders['Authorization']).toBeUndefined();
-        sse.close();
-        done();
-      } catch (e) {
-        done(e);
-      }
-    }, 50);
+    expect(capturedHeaders['Authorization']).toBeUndefined();
+    sse.close();
   });
 });

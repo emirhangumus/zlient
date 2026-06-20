@@ -1,12 +1,17 @@
+import type { EventHandler } from '../realtime-utils';
+import { EventEmitter } from '../event-emitter';
+import { parseRealtimeData, serializeRealtimeData } from '../realtime-utils';
 import { WSConnection, StandardSchemaV1 } from '../types';
 import { parseOrThrow } from '../validation';
 
 export class WSConnectionImpl<
   SendSchema extends StandardSchemaV1 | undefined,
   ReceiveSchema extends StandardSchemaV1 | undefined,
-> implements WSConnection<SendSchema, ReceiveSchema> {
+>
+  extends EventEmitter
+  implements WSConnection<SendSchema, ReceiveSchema>
+{
   private ws: WebSocket;
-  private handlers: Map<string, Set<Function>> = new Map();
 
   constructor(
     url: string,
@@ -16,6 +21,8 @@ export class WSConnectionImpl<
     private skipResponseValidation = false,
     protocols?: string | string[]
   ) {
+    super();
+
     if (typeof WebSocket === 'undefined') {
       throw new Error('WebSocket is not defined. Ensure you are in a supported environment.');
     }
@@ -26,16 +33,8 @@ export class WSConnectionImpl<
     this.ws.onclose = (event) => this.emit('close', event);
     this.ws.onerror = (event) => this.emit('error', event);
     this.ws.onmessage = async (event) => {
-      let data = event.data;
+      let data = parseRealtimeData(event.data);
       try {
-        if (typeof data === 'string') {
-          try {
-            data = JSON.parse(data);
-          } catch {
-            // Not JSON, keep as string
-          }
-        }
-
         if (!this.skipResponseValidation && this.receiveSchema) {
           data = await parseOrThrow(this.receiveSchema, data);
         }
@@ -46,35 +45,35 @@ export class WSConnectionImpl<
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async send(data: any): Promise<void> {
+  async send(
+    data: SendSchema extends StandardSchemaV1 ? StandardSchemaV1.InferInput<SendSchema> : unknown
+  ): Promise<void> {
     if (!this.skipRequestValidation && this.sendSchema) {
       await parseOrThrow(this.sendSchema, data);
     }
-
-    const message = data != null && typeof data === 'object' ? JSON.stringify(data) : data;
-    this.ws.send(message);
+    this.ws.send(serializeRealtimeData(data));
   }
 
-  on(event: string, handler: Function): void {
-    if (!this.handlers.has(event)) {
-      this.handlers.set(event, new Set());
-    }
-    this.handlers.get(event)!.add(handler);
+  // Overloads satisfy the WSConnection<> interface; implementation uses never[]
+  // so that any function type (including () => void) is assignable to it.
+  on(
+    event: 'message',
+    handler: (
+      data: ReceiveSchema extends StandardSchemaV1
+        ? StandardSchemaV1.InferOutput<ReceiveSchema>
+        : unknown
+    ) => void
+  ): void;
+  on(event: 'open', handler: () => void): void;
+  on(event: 'close', handler: (event: CloseEvent) => void): void;
+  on(event: 'error', handler: (event: unknown) => void): void;
+  on(event: string, handler: (data: unknown) => void): void;
+  on(event: string, handler: (...args: never[]) => void): void {
+    super.on(event, handler as EventHandler);
   }
 
-  off(event: string, handler: Function): void {
-    const handlers = this.handlers.get(event);
-    if (handlers) {
-      handlers.delete(handler);
-    }
-  }
-
-  private emit(event: string, ...args: any[]): void {
-    const handlers = this.handlers.get(event);
-    if (handlers) {
-      handlers.forEach((handler) => handler(...args));
-    }
+  off(event: string, handler: (...args: never[]) => void): void {
+    super.off(event, handler as EventHandler);
   }
 
   close(code?: number, reason?: string): void {

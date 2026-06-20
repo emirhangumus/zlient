@@ -1,5 +1,12 @@
+import { validateEndpointParams } from '../endpoint-utils';
 import { HttpClient } from '../http/http-client';
-import { StandardSchemaV1, toQueryString, WSEndpointCall, WSEndpointConfig } from '../types';
+import {
+  StandardSchemaV1,
+  toQueryString,
+  toRequestQuery,
+  WSEndpointCall,
+  WSEndpointConfig,
+} from '../types';
 import { WSConnectionImpl } from './ws-client';
 
 export class WSEndpointImpl<
@@ -13,25 +20,26 @@ export class WSEndpointImpl<
     private config: WSEndpointConfig<SendSchema, ReceiveSchema, QuerySchema, PathSchema>
   ) {}
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createCall(): WSEndpointCall<SendSchema, ReceiveSchema, QuerySchema, PathSchema> {
-    return (params) => {
+    return async (params) => {
       const { query, pathParams, protocols } = params || {};
 
-      // Resolve Path
-      let pathStr: string;
-      if (typeof this.config.path === 'function') {
-        if (!pathParams) throw new Error('Path function requires pathParams');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        pathStr = this.config.path(pathParams as any);
-      } else {
-        pathStr = this.config.path;
-      }
+      const { parsedQuery, pathStr } = await validateEndpointParams(
+        this.config,
+        {
+          query,
+          pathParams,
+        },
+        {
+          query: 'WebSocket query parameters',
+          path: 'WebSocket path parameters',
+        }
+      );
 
       const baseUrl = this.client.getBaseUrl(this.config.advanced?.baseUrlKey || 'default');
-      // Convert http/https to ws/wss if necessary
+      // Convert http(s) to ws(s) for WebSocket URLs
       const wsBaseUrl = baseUrl.replace(/^http/, 'ws');
-      const url = `${wsBaseUrl}${pathStr}${toQueryString(query as any)}`;
+      const url = `${wsBaseUrl}${pathStr}${toQueryString(toRequestQuery(parsedQuery))}`;
 
       return new WSConnectionImpl<SendSchema, ReceiveSchema>(
         url,

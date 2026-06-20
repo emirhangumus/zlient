@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 import { z } from 'zod';
 import { HttpClient } from '../lib/http/http-client';
-import { SchemaDefinitionError, toQueryString } from '../lib/types';
+import { ApiError, SchemaDefinitionError, toQueryString } from '../lib/types';
 
 describe('HTTP Helpers', () => {
   describe('toQueryString', () => {
@@ -28,6 +28,53 @@ describe('HTTP Helpers', () => {
   });
 
   describe('HttpClient error handling', () => {
+    it('should throw ApiError with status details for non-success responses', async () => {
+      const mockFetch = mock(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: 'User not found' }), {
+            status: 404,
+            statusText: 'Not Found',
+            headers: { 'Content-Type': 'application/json' },
+          })
+        )
+      );
+      const client = new HttpClient({
+        baseUrls: { default: 'https://api.example.com' },
+        fetch: mockFetch as any,
+      });
+
+      try {
+        await client.get('/users/123');
+        expect(true).toBe(false);
+      } catch (error) {
+        expect(error).toBeInstanceOf(ApiError);
+        expect((error as ApiError).status).toBe(404);
+        expect((error as ApiError).method).toBe('GET');
+        expect((error as ApiError).url).toBe('https://api.example.com/users/123');
+        expect((error as ApiError).details).toEqual({ error: 'User not found' });
+        expect((error as ApiError).message).toContain('User not found');
+      }
+    });
+
+    it('should wrap malformed JSON responses with parsing context', async () => {
+      const mockFetch = mock(() =>
+        Promise.resolve(
+          new Response('{invalid json', {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        )
+      );
+      const client = new HttpClient({
+        baseUrls: { default: 'https://api.example.com' },
+        fetch: mockFetch as any,
+      });
+
+      await expect(client.get('/test')).rejects.toThrow(
+        'Failed to parse response body from GET https://api.example.com/test'
+      );
+    });
+
     it('should throw SchemaDefinitionError for undefined status code schema', async () => {
       const mockFetch = mock(() =>
         Promise.resolve(new Response(JSON.stringify({}), { status: 202 }))

@@ -21,9 +21,9 @@ describe('Auth Providers', () => {
 
     it('should add api key to query params', async () => {
       const auth = new ApiKeyAuth({ query: 'apiKey', value: 'secret-key' });
-      const init: RequestInit & { __urlOverride?: string } = { headers: {} };
-      await auth.apply({ url: 'https://example.com/path', init });
-      expect(init.__urlOverride).toBe('https://example.com/path?apiKey=secret-key');
+      const ctx = { url: 'https://example.com/path', init: { headers: {} } };
+      await auth.apply(ctx);
+      expect(ctx.url).toBe('https://example.com/path?apiKey=secret-key');
     });
 
     it('should throw if both header and query are provided', () => {

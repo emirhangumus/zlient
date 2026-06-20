@@ -249,7 +249,9 @@ describe('Zlient', () => {
         await client.get('/test');
         expect(true).toBe(false); // Should have thrown
       } catch (e: any) {
-        expect(e.name).toBe('TimeoutError');
+        expect(e).toBeInstanceOf(ApiError);
+        expect(e.message).toContain('Request aborted');
+        expect(e.cause?.name).toBe('TimeoutError');
       }
     });
   });

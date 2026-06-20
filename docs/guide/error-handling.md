@@ -25,9 +25,14 @@ try {
 
     // Original status code
     console.log(err.status); // e.g. 404
+    console.log(err.method); // e.g. "GET"
+    console.log(err.url); // e.g. "https://api.example.com/users/123"
+    console.log(err.details); // Parsed error response body when available
   }
 }
 ```
+
+For HTTP status errors, the message includes the request method, URL, status code, status text, and a server-provided `message`, `error`, `title`, or `detail` field when present. The parsed response body is available on `err.details`.
 
 ## Validation Errors
 
@@ -53,15 +58,15 @@ Zlient automatically retries requests based on the configured strategy using exp
 const client = new HttpClient({
   baseUrls: { default: 'https://api.example.com' },
   retry: {
-    maxAttempts: 3, // Total number of attempts (including initial request)
+    maxAttempts: 3, // Total number of retry attempts (not counting the initial request)
     baseDelayMs: 1000, // Initial delay in milliseconds for exponential backoff
-    jitter: 0.2, // Optional: randomize delays to prevent thundering herd (0..1)
     retryMethods: ['GET', 'POST', 'PUT'], // HTTP methods eligible for retry
     retryStatusCodes: [500, 502, 503, 504], // HTTP status codes eligible for retry
     respectRetryAfter: true, // Honor 'Retry-After' header if present
     shouldRetry: (ctx) => {
-      // Optional: custom retry logic
-      return ctx.error instanceof NetworkError;
+      // Optional: custom retry logic. Called before each retry attempt.
+      // ctx: { url, method, status, attempt, response? }
+      return ctx.status !== 400; // e.g. never retry a 400 Bad Request
     },
   },
 });
@@ -74,8 +79,6 @@ Delays between retries follow this formula: `baseDelayMs * 2^(attempt - 1)`
 - **1st retry**: `baseDelayMs * 2^0` = 1000ms
 - **2nd retry**: `baseDelayMs * 2^1` = 2000ms
 - **3rd retry**: `baseDelayMs * 2^2` = 4000ms
-
-With jitter enabled, delays are randomized by the specified factor to prevent the "thundering herd" problem.
 
 ### Retry-After Support
 
@@ -109,3 +112,27 @@ const risky = client.createEndpoint({
   advanced: { skipRetry: true },
 });
 ```
+
+## Handling 401s & Token Refresh
+
+`onUnauthenticated` lets the client recover from an expired token without the caller having
+to retry manually. It's called once per request when a `401` response is received; returning
+`true` retries the request exactly once, and `false` (or a thrown error) surfaces the `401` as
+a normal `ApiError`.
+
+```typescript
+const client = new HttpClient({
+  baseUrls: { default: 'https://api.example.com' },
+  auth: new BearerTokenAuth(() => getCurrentAccessToken()),
+  onUnauthenticated: async () => {
+    const refreshed = await refreshAccessToken(); // updates whatever getCurrentAccessToken() reads
+    return refreshed;
+  },
+});
+```
+
+Before the retry, auth is re-applied so your `AuthProvider` picks up the refreshed token —
+unless the original request was sent with `skipAuth: true`, in which case `onUnauthenticated`
+still runs and can still trigger the retry, but auth is never (re-)applied.
+
+A request that's been opted out with `skipAuth: true` never triggers `onUnauthenticated`.
