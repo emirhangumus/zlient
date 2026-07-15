@@ -435,6 +435,8 @@ export type RequestOptions = {
   skipAuth?: boolean;
   /** Skip retry logic for this request */
   skipRetry?: boolean;
+  /** Status codes that should be treated as successful and not throw, even if not in the 2xx range */
+  expectedStatuses?: readonly number[];
 };
 
 /**

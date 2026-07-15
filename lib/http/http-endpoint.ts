@@ -102,6 +102,11 @@ export class EndpointImpl<
       pathParams,
     });
 
+    const schema = this.config.response;
+    const expectedStatuses = isStandardSchema(schema)
+      ? undefined
+      : Object.keys(schema as SchemaMap).map(Number);
+
     const { data: responseData, status } = await this.client.request(
       this.config.method,
       pathStr,
@@ -112,6 +117,7 @@ export class EndpointImpl<
         baseUrlKey: this.config.advanced?.baseUrlKey,
         skipAuth: this.config.advanced?.skipAuth,
         skipRetry: this.config.advanced?.skipRetry,
+        expectedStatuses,
         signal,
       }
     );
@@ -119,8 +125,6 @@ export class EndpointImpl<
     if (this.config.advanced?.skipResponseValidation) {
       return responseData as InferResponse<ResSchema>;
     }
-
-    const schema = this.config.response;
 
     if (isStandardSchema(schema)) {
       return (await parseOrThrow(schema, responseData, {

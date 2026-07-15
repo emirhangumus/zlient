@@ -283,8 +283,9 @@ export class HttpClient {
         }
 
         const status = res.status as HTTPStatusCodeNumber;
+        const isExpected = res.ok || (options?.expectedStatuses?.includes(status) ?? false);
 
-        if (!res.ok) {
+        if (!isExpected) {
           const retryInfo = await this.getRetryInfo(
             res,
             authCtx.url,
@@ -304,7 +305,7 @@ export class HttpClient {
         const data = await parseResponseData(res, method, authCtx.url);
         await this.runAfterHooks(new Request(authCtx.url, authCtx.init), res, data);
 
-        if (!res.ok) {
+        if (!isExpected) {
           throw createStatusError(method, authCtx.url, res, data);
         }
 
